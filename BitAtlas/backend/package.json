@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:simple": "tsx watch src/index-dev.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest",
