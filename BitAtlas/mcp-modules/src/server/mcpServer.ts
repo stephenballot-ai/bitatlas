@@ -52,27 +52,27 @@ export class McpServer {
     }
   }
 
-  private async searchFiles(params: any, authContext: any) {
+  private async searchFiles(_params: any, _authContext: any) {
     // Implementation placeholder - will be connected to actual search service
     throw new Error('Not implemented yet');
   }
 
-  private async readFile(params: any, authContext: any) {
+  private async readFile(_params: any, _authContext: any) {
     // Implementation placeholder - will be connected to file service
     throw new Error('Not implemented yet');
   }
 
-  private async createFile(params: any, authContext: any) {
+  private async createFile(_params: any, _authContext: any) {
     // Implementation placeholder - will be connected to file service
     throw new Error('Not implemented yet');
   }
 
-  private async updateFile(params: any, authContext: any) {
+  private async updateFile(_params: any, _authContext: any) {
     // Implementation placeholder - will be connected to file service
     throw new Error('Not implemented yet');
   }
 
-  private async deleteFile(params: any, authContext: any) {
+  private async deleteFile(_params: any, _authContext: any) {
     // Implementation placeholder - will be connected to file service
     throw new Error('Not implemented yet');
   }

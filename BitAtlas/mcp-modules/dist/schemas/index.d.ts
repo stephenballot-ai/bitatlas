@@ -51,21 +51,21 @@ export declare const MCPResponseSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     id: string;
     timestamp: number;
+    result?: unknown;
     error?: {
         code: number;
         message: string;
         data?: unknown;
     } | undefined;
-    result?: unknown;
 }, {
     id: string;
     timestamp: number;
+    result?: unknown;
     error?: {
         code: number;
         message: string;
         data?: unknown;
     } | undefined;
-    result?: unknown;
 }>;
 export declare const MCPNotificationSchema: z.ZodObject<{
     method: z.ZodString;
@@ -222,6 +222,7 @@ export declare const SessionSchema: z.ZodObject<{
     expiresAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     id: string;
+    userId: string;
     token: {
         token: string;
         expiresAt: number;
@@ -230,10 +231,10 @@ export declare const SessionSchema: z.ZodObject<{
     };
     expiresAt: string;
     createdAt: string;
-    userId: string;
     metadata: Record<string, unknown>;
 }, {
     id: string;
+    userId: string;
     token: {
         token: string;
         expiresAt: number;
@@ -242,7 +243,6 @@ export declare const SessionSchema: z.ZodObject<{
     };
     expiresAt: string;
     createdAt: string;
-    userId: string;
     metadata: Record<string, unknown>;
 }>;
 export declare const FilePermissionsSchema: z.ZodObject<{
@@ -812,9 +812,9 @@ export declare const SearchResultItemSchema: z.ZodObject<{
         checksum?: string | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
+    id: string;
     name: string;
     relevance: number;
-    id: string;
     path: string;
     type: "file" | "directory";
     metadata: {
@@ -842,9 +842,9 @@ export declare const SearchResultItemSchema: z.ZodObject<{
         column?: number | undefined;
     }[];
 }, {
+    id: string;
     name: string;
     relevance: number;
-    id: string;
     path: string;
     type: "file" | "directory";
     metadata: {
@@ -960,9 +960,9 @@ export declare const SearchResultSchema: z.ZodObject<{
             checksum?: string | undefined;
         }>;
     }, "strip", z.ZodTypeAny, {
+        id: string;
         name: string;
         relevance: number;
-        id: string;
         path: string;
         type: "file" | "directory";
         metadata: {
@@ -990,9 +990,9 @@ export declare const SearchResultSchema: z.ZodObject<{
             column?: number | undefined;
         }[];
     }, {
+        id: string;
         name: string;
         relevance: number;
-        id: string;
         path: string;
         type: "file" | "directory";
         metadata: {
@@ -1027,9 +1027,9 @@ export declare const SearchResultSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     page: number;
     items: {
+        id: string;
         name: string;
         relevance: number;
-        id: string;
         path: string;
         type: "file" | "directory";
         metadata: {
@@ -1063,9 +1063,9 @@ export declare const SearchResultSchema: z.ZodObject<{
 }, {
     page: number;
     items: {
+        id: string;
         name: string;
         relevance: number;
-        id: string;
         path: string;
         type: "file" | "directory";
         metadata: {
@@ -1156,21 +1156,21 @@ export declare const WSMessageSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         id: string;
         timestamp: number;
+        result?: unknown;
         error?: {
             code: number;
             message: string;
             data?: unknown;
         } | undefined;
-        result?: unknown;
     }, {
         id: string;
         timestamp: number;
+        result?: unknown;
         error?: {
             code: number;
             message: string;
             data?: unknown;
         } | undefined;
-        result?: unknown;
     }>, z.ZodObject<{
         method: z.ZodString;
         params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -1199,8 +1199,8 @@ export declare const WSMessageSchema: z.ZodObject<{
     connectionId: z.ZodString;
     timestamp: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
-    type: "request" | "response" | "notification" | "error";
     timestamp: number;
+    type: "error" | "request" | "response" | "notification";
     data: {
         id: string;
         method: string;
@@ -1213,12 +1213,12 @@ export declare const WSMessageSchema: z.ZodObject<{
     } | {
         id: string;
         timestamp: number;
+        result?: unknown;
         error?: {
             code: number;
             message: string;
             data?: unknown;
         } | undefined;
-        result?: unknown;
     } | {
         method: string;
         timestamp: number;
@@ -1226,8 +1226,8 @@ export declare const WSMessageSchema: z.ZodObject<{
     };
     connectionId: string;
 }, {
-    type: "request" | "response" | "notification" | "error";
     timestamp: number;
+    type: "error" | "request" | "response" | "notification";
     data: {
         id: string;
         method: string;
@@ -1240,12 +1240,12 @@ export declare const WSMessageSchema: z.ZodObject<{
     } | {
         id: string;
         timestamp: number;
+        result?: unknown;
         error?: {
             code: number;
             message: string;
             data?: unknown;
         } | undefined;
-        result?: unknown;
     } | {
         method: string;
         timestamp: number;

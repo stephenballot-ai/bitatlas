@@ -22,14 +22,14 @@ export class GdprService {
       exportDate: new Date().toISOString(),
       userId,
       profile: userData.profile,
-      files: userData.files.map(f => ({
+      files: userData.files.map((f: any) => ({
         id: f.id,
         name: f.name,
         size: f.size,
         createdAt: f.created_at,
         // Exclude storage keys and internal metadata for privacy
       })),
-      sessions: userData.sessions.map(s => ({
+      sessions: userData.sessions.map((s: any) => ({
         deviceInfo: s.device_info,
         createdAt: s.created_at,
         lastUsed: s.last_used
