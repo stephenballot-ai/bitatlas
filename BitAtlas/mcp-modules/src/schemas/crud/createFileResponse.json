@@ -1,0 +1,14 @@
+{
+  "$id": "createFileResponse.json",
+  "type": "object",
+  "allOf": [{ "$ref": "common.json" }],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "fileId": { "type": "string" }
+      },
+      "required": ["fileId"]
+    }
+  }
+}

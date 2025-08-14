@@ -1,0 +1,28 @@
+{
+  "$id": "searchFilesResponse.json",
+  "type": "object",
+  "allOf": [{ "$ref": "common.json" }],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": { "type": "string" },
+              "name": { "type": "string" },
+              "mimeType": { "type": "string" },
+              "size": { "type": "integer" },
+              "lastModified": { "type": "string", "format": "date-time" }
+            },
+            "required": ["fileId", "name"]
+          }
+        },
+        "total": { "type": "integer" }
+      },
+      "required": ["results", "total"]
+    }
+  }
+}

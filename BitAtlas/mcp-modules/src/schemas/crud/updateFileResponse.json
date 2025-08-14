@@ -1,0 +1,8 @@
+{
+  "$id": "updateFileResponse.json",
+  "type": "object",
+  "allOf": [{ "$ref": "common.json" }],
+  "properties": {
+    "data": { "type": "object" }
+  }
+}

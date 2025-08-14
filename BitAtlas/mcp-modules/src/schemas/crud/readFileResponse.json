@@ -1,0 +1,18 @@
+{
+  "$id": "readFileResponse.json",
+  "type": "object",
+  "allOf": [{ "$ref": "common.json" }],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "size": { "type": "integer" },
+        "mimeType": { "type": "string" },
+        "metadata": { "type": "object" },
+        "contentUrl": { "type": "string", "format": "uri" }
+      },
+      "required": ["name", "size", "mimeType", "contentUrl"]
+    }
+  }
+}

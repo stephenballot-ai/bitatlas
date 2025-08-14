@@ -1,3 +1,9 @@
+Overall: 
+
+Build BitAtlas, a modular cloud file storage platform using Model Context Protocol (MCP) for CRUD and search operations with exclusively European providers. The architecture will separate file operations into MCP-compliant modules enabling extensibility and AI integration while maintaining complete European data sovereignty.
+
+TASKS:
+
 Design MCP interface specifications for file CRUD operations (create, read, update, delete) and search functionality with standardized request/response schemas
 
 

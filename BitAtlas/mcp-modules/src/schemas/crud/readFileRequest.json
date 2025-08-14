@@ -1,0 +1,16 @@
+{
+  "$id": "readFileRequest.json",
+  "type": "object",
+  "properties": {
+    "operation": { "type": "string", "const": "readFile" },
+    "params": {
+      "type": "object",
+      "properties": {
+        "fileId": { "type": "string" },
+        "preview": { "type": "boolean", "default": false }
+      },
+      "required": ["fileId"]
+    }
+  },
+  "required": ["operation", "params"]
+}

@@ -1,0 +1,16 @@
+{
+  "$id": "deleteFileRequest.json",
+  "type": "object",
+  "properties": {
+    "operation": { "type": "string", "const": "deleteFile" },
+    "params": {
+      "type": "object",
+      "properties": {
+        "fileId": { "type": "string" },
+        "softDelete": { "type": "boolean", "default": true }
+      },
+      "required": ["fileId"]
+    }
+  },
+  "required": ["operation", "params"]
+}
