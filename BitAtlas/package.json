@@ -5,13 +5,13 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "1",
+    "backend",
     "mcp-modules"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "dev": "concurrently \"npm run dev --workspace=1\" \"npm run dev --workspace=frontend\"",
+    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
     "install:all": "npm install --workspaces",
     "clean": "npm run clean --workspaces",
     "lint": "npm run lint --workspaces",

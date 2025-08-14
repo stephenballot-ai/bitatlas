@@ -243,3 +243,9 @@ export type {
   WSConnection,
   WSMessage,
 } from './types/index.js';
+
+// Export new implementation modules
+export * from './types/mcpProtocol';
+export * from './server/mcpServer';
+export * from './storage/storageOrchestrator';
+export * from './gdpr/gdprService';
