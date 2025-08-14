@@ -1,0 +1,29 @@
+{
+  "name": "bitatlas",
+  "version": "1.0.0",
+  "description": "BitAtlas - A comprehensive MCP-enabled development platform",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "mcp-modules"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "install:all": "npm install --workspaces",
+    "clean": "npm run clean --workspaces",
+    "lint": "npm run lint --workspaces",
+    "type-check": "npm run type-check --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
