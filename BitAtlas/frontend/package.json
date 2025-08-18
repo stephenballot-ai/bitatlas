@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
@@ -20,7 +21,6 @@
     "react-router-dom": "^6.20.1",
     "axios": "^1.6.2",
     "@tanstack/react-query": "^5.8.4",
-    "@bitatlas/mcp-modules": "*",
     "clsx": "^2.0.0",
     "lucide-react": "^0.294.0",
     "zustand": "^4.4.7"
