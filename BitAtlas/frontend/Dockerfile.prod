@@ -1,0 +1,54 @@
+# Production Dockerfile for BitAtlas Frontend
+FROM node:20-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+# Build stage
+FROM base AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build for production
+ENV NODE_ENV=production
+RUN npm run build
+
+# Production stage with nginx
+FROM nginx:1.25-alpine AS runner
+WORKDIR /usr/share/nginx/html
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nginx-user && \
+    adduser --system --uid 1001 nginx-user
+
+# Copy built application
+COPY --from=builder --chown=nginx-user:nginx-user /app/dist ./
+
+# Copy nginx configuration
+COPY nginx.prod.conf /etc/nginx/nginx.conf
+
+# Create cache directory
+RUN mkdir -p /var/cache/nginx && \
+    chown -R nginx-user:nginx-user /var/cache/nginx && \
+    chown -R nginx-user:nginx-user /usr/share/nginx/html
+
+# Switch to non-root user
+USER nginx-user
+
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
