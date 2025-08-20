@@ -109,17 +109,17 @@ router.get('/tools', mcpRateLimit, async (req: AuthenticatedRequest, res: Respon
       },
       {
         name: 'createFile',
-        description: 'Create a new file with specified content',
+        description: 'Create a new file with specified content. Supports both text and binary files (via base64 encoding).',
         inputSchema: {
           type: 'object',
           properties: {
             name: {
               type: 'string',
-              description: 'Name of the file to create'
+              description: 'Name of the file to create (including extension)'
             },
             content: {
               type: 'string',
-              description: 'Content of the file'
+              description: 'File content as string. For text files: plain text. For binary files: base64-encoded content.'
             },
             path: {
               type: 'string',
@@ -128,10 +128,40 @@ router.get('/tools', mcpRateLimit, async (req: AuthenticatedRequest, res: Respon
             },
             metadata: {
               type: 'object',
-              description: 'Additional metadata for the file'
+              description: 'Additional metadata for the file',
+              properties: {
+                encoding: {
+                  type: 'string',
+                  description: 'Content encoding: "text" or "base64"',
+                  enum: ['text', 'base64'],
+                  default: 'text'
+                },
+                description: {
+                  type: 'string',
+                  description: 'File description'
+                },
+                tags: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'File tags for organization'
+                }
+              }
             }
           },
-          required: ['name']
+          required: ['name'],
+          examples: [
+            {
+              name: 'example.txt',
+              content: 'Hello, World!',
+              path: '/documents',
+              metadata: { encoding: 'text', description: 'Simple text file' }
+            },
+            {
+              name: 'data.json',
+              content: '{"key": "value", "number": 42}',
+              metadata: { encoding: 'text', tags: ['json', 'data'] }
+            }
+          ]
         },
         enabled: userScopes.includes('files:write')
       },
