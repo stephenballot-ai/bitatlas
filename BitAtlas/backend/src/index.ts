@@ -13,6 +13,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { authRoutes } from './routes/auth';
 import { fileRoutes } from './routes/files';
 import { mcpRoutes } from './routes/mcp';
+import { oauthRoutes } from './routes/oauth';
 
 // Load environment variables
 dotenv.config();
@@ -86,6 +87,10 @@ app.get('/health', async (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/files', fileRoutes);
 app.use('/api/v1/mcp', mcpRoutes);
+app.use('/oauth', oauthRoutes);
+
+// Token management API routes
+app.use('/api/tokens', oauthRoutes);
 
 // Legacy status endpoint
 app.get('/api/v1/status', (req, res) => {

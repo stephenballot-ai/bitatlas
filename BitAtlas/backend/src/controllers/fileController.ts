@@ -196,4 +196,47 @@ export class FileController {
       });
     }
   };
+
+  uploadFile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.file) {
+        res.status(400).json({
+          error: 'No file provided',
+          code: 'ERR_NO_FILE'
+        });
+        return;
+      }
+
+      const { originalname: name, buffer, mimetype, size } = req.file;
+      const { path = '/', folderId } = req.body;
+
+      // Convert buffer to base64 for storage
+      const content = buffer.toString('base64');
+
+      const result = await this.mcpOrchestrator.call('file.create', {
+        name,
+        content,
+        path,
+        folderId,
+        metadata: {
+          originalMimeType: mimetype,
+          originalSize: size,
+          uploadedAt: new Date().toISOString()
+        }
+      }, {
+        userId: req.user.userId,
+        scopes: req.user.scopes
+      });
+
+      res.status(201).json({
+        message: 'File uploaded successfully',
+        file: result
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'File upload failed',
+        code: 'ERR_FILE_UPLOAD_FAILED'
+      });
+    }
+  };
 }

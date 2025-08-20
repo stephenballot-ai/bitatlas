@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../database/connection';
 
@@ -183,7 +183,7 @@ export class AuthService {
 
     const accessToken = jwt.sign(payload, this.JWT_SECRET, {
       expiresIn: this.JWT_EXPIRES_IN
-    });
+    } as SignOptions);
 
     const refreshToken = this.generateRefreshToken();
     const expiresAt = new Date(Date.now() + this.parseTimeToMs(this.REFRESH_TOKEN_EXPIRES_IN));

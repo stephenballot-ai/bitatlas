@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthService, JWTPayload } from '../services/authService';
 
 export interface AuthenticatedRequest extends Request {
-  user: JWTPayload;
+  user?: JWTPayload;
 }
 
 export class AuthMiddleware {

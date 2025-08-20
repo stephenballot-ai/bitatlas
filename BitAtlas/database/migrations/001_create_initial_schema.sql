@@ -44,6 +44,20 @@ CREATE TABLE sessions (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- OAuth authorization codes table
+CREATE TABLE oauth_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code VARCHAR(255) UNIQUE NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  client_id VARCHAR(255) NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  state TEXT,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- OAuth tokens table
 CREATE TABLE oauth_tokens (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -1,4 +1,4 @@
-import { McpRequest, McpResponse, McpErrorCode } from '../../../mcp-modules/src/types/mcpProtocol';
+import { McpRequest, McpResponse, McpErrorCode } from '../types/mcpProtocol';
 import { db } from '../database/connection';
 
 export interface McpCallOptions {
@@ -75,9 +75,37 @@ export class McpOrchestrator {
       throw new Error('User ID is required');
     }
 
-    // For Phase 1, we'll create a basic file record without actual storage
     const path = params.path || '/';
-    const size = params.content ? Buffer.byteLength(params.content, 'utf8') : 0;
+    let size = 0;
+    let storageKey = `${options.userId}/${Date.now()}-${params.name}`;
+
+    // Handle file content
+    if (params.content) {
+      if (typeof params.content === 'string') {
+        // Assume base64 encoded content from file upload
+        try {
+          const buffer = Buffer.from(params.content, 'base64');
+          size = buffer.length;
+          
+          // Store the actual file content (in Phase 2, we store in uploads directory)
+          const fs = require('fs');
+          const uploadPath = `./uploads/${storageKey}`;
+          
+          // Ensure uploads directory exists
+          const uploadDir = './uploads';
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          
+          fs.writeFileSync(uploadPath, buffer);
+        } catch (error) {
+          throw new Error('Invalid file content encoding');
+        }
+      } else {
+        size = Buffer.byteLength(params.content, 'utf8');
+      }
+    }
+
     const mimeType = this.detectMimeType(params.name);
 
     const result = await db.query(`
@@ -91,8 +119,8 @@ export class McpOrchestrator {
       size,
       mimeType,
       params.metadata || {},
-      'local', // For Phase 1, using local storage
-      `${options.userId}/${params.name}` // Simple key structure
+      'local',
+      storageKey
     ]);
 
     const file = result.rows[0];
@@ -128,10 +156,34 @@ export class McpOrchestrator {
 
     const file = result.rows[0];
 
-    // For Phase 1, we'll return mock content for preview
+    // Read actual file content if requested
     let content = '';
-    if (params.preview && file.mime_type?.startsWith('text/')) {
-      content = `Mock content for file: ${file.name}`;
+    if (params.preview || params.download) {
+      try {
+        const fs = require('fs');
+        const uploadPath = `./uploads/${file.storage_key}`;
+        
+        if (fs.existsSync(uploadPath)) {
+          if (file.mime_type?.startsWith('text/') || params.preview) {
+            // For text files or preview, return as text
+            const buffer = fs.readFileSync(uploadPath);
+            if (file.mime_type?.startsWith('text/')) {
+              content = buffer.toString('utf8');
+            } else {
+              // For binary files in preview, return base64
+              content = buffer.toString('base64');
+            }
+          } else if (params.download) {
+            // For download, return base64 encoded
+            const buffer = fs.readFileSync(uploadPath);
+            content = buffer.toString('base64');
+          }
+        } else {
+          content = `File not found in storage: ${file.name}`;
+        }
+      } catch (error) {
+        content = `Error reading file: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      }
     }
 
     return {
@@ -141,7 +193,7 @@ export class McpOrchestrator {
       size: file.size,
       mimeType: file.mime_type,
       createdAt: file.created_at.toISOString(),
-      content: params.preview ? content : undefined
+      content: content || undefined
     };
   }
 

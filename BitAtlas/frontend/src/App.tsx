@@ -1,6 +1,9 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { LoadingSpinner } from './components/common/LoadingSpinner';
+import { NotificationProvider, useNotifications } from './components/common/NotificationSystem';
 
 // Auth Context
 interface AuthContextType {
@@ -57,10 +60,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        height: '100vh',
-        fontFamily: 'system-ui'
+        height: '100vh'
       }}>
-        <div>Loading BitAtlas...</div>
+        <LoadingSpinner size="large" text="Loading BitAtlas..." />
       </div>
     );
   }
@@ -338,7 +340,7 @@ function RegisterPage() {
     }
     
     try {
-      const response = await axios.post('http://localhost:3001/api/auth/register', { email, password });
+      await axios.post('http://localhost:3001/api/auth/register', { email, password });
       alert('Registration successful! You can now sign in.');
       navigate('/login');
     } catch (error) {
@@ -421,7 +423,7 @@ function RegisterPage() {
   );
 }
 
-// Simple Dashboard Component
+// Enhanced Dashboard Component
 function Dashboard() {
   const [files, setFiles] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -430,15 +432,46 @@ function Dashboard() {
   const [uploading, setUploading] = useState(false);
   const [oauthResult, setOauthResult] = useState<any>(null);
   const [tokens, setTokens] = useState<any[]>([]);
+  const [filesLoading, setFilesLoading] = useState(true);
   const { user, logout } = useAuth();
+  const { showNotification } = useNotifications();
 
   // Load tokens
   const loadTokens = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/tokens');
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:3001/api/tokens', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setTokens(response.data.tokens);
     } catch (error) {
       console.error('Failed to load tokens:', error);
+      showNotification({
+        type: 'error',
+        title: 'Failed to load access tokens',
+        message: 'Unable to fetch your OAuth tokens'
+      });
+    }
+  };
+
+  // Load files
+  const loadFiles = async () => {
+    try {
+      setFilesLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:3001/api/v1/files', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setFiles(response.data.results || []);
+    } catch (error) {
+      console.error('Failed to load files:', error);
+      showNotification({
+        type: 'error',
+        title: 'Failed to load files',
+        message: 'Unable to fetch your files'
+      });
+    } finally {
+      setFilesLoading(false);
     }
   };
 
@@ -490,20 +523,31 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // Load files
-    axios.get('http://localhost:3001/api/files')
-      .then(response => setFiles(response.data.files))
-      .catch(console.error);
+    loadFiles();
   }, []);
 
   const handleSearch = async () => {
     if (!searchQuery) return;
     
     try {
-      const response = await axios.get(`http://localhost:3001/mcp/v1/search?query=${searchQuery}`);
-      setSearchResults(response.data.results);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`http://localhost:3001/api/v1/files/search/query?q=${searchQuery}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setSearchResults(response.data.results || []);
+      
+      showNotification({
+        type: 'success',
+        title: 'Search completed',
+        message: `Found ${response.data.results?.length || 0} files`
+      });
     } catch (error) {
       console.error('Search failed:', error);
+      showNotification({
+        type: 'error',
+        title: 'Search failed',
+        message: 'Unable to search your files'
+      });
     }
   };
 
@@ -515,18 +559,31 @@ function Dashboard() {
     formData.append('file', selectedFile);
     
     try {
-      const response = await axios.post('http://localhost:3001/api/files/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const token = localStorage.getItem('token');
+      await axios.post('http://localhost:3001/api/v1/files/upload', formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      showNotification({
+        type: 'success',
+        title: 'File uploaded successfully',
+        message: `${selectedFile.name} has been uploaded`
       });
       
       // Refresh files list
-      const filesResponse = await axios.get('http://localhost:3001/api/files');
-      setFiles(filesResponse.data.files);
+      await loadFiles();
       
       setSelectedFile(null);
-      alert('File uploaded successfully!');
     } catch (error) {
-      alert('Upload failed: ' + (error as any).response?.data?.error);
+      console.error('Upload failed:', error);
+      showNotification({
+        type: 'error',
+        title: 'Upload failed',
+        message: (error as any).response?.data?.error || 'Failed to upload file'
+      });
     } finally {
       setUploading(false);
     }
@@ -547,11 +604,23 @@ function Dashboard() {
 
   const revokeToken = async (tokenId: string) => {
     try {
-      await axios.delete(`http://localhost:3001/api/tokens/${tokenId}`);
+      const token = localStorage.getItem('token');
+      await axios.delete(`http://localhost:3001/api/tokens/${tokenId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       loadTokens(); // Refresh the list
-      alert('Token revoked successfully');
+      
+      showNotification({
+        type: 'success',
+        title: 'Token revoked',
+        message: 'Access token has been revoked successfully'
+      });
     } catch (error) {
-      alert('Failed to revoke token: ' + (error as any).response?.data?.error);
+      showNotification({
+        type: 'error',
+        title: 'Failed to revoke token',
+        message: (error as any).response?.data?.error || 'Unable to revoke token'
+      });
     }
   };
 
@@ -704,19 +773,43 @@ function Dashboard() {
       {/* Files Section */}
       <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
         <h3 style={{ marginTop: 0 }}>📁 Your Files</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
-          {files.map(file => (
-            <div key={file.id} style={{ background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #b1b4b6' }}>
-              <strong>{file.name}</strong>
-              <p style={{ margin: '5px 0', fontSize: '0.9rem', color: '#505a5f' }}>
-                Size: {Math.round(file.size / 1024)}KB
-              </p>
-              <p style={{ margin: '5px 0', fontSize: '0.8rem', color: '#626a6e' }}>
-                {new Date(file.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-          ))}
-        </div>
+        {filesLoading ? (
+          <LoadingSpinner text="Loading files..." />
+        ) : files.length === 0 ? (
+          <p style={{ textAlign: 'center', color: '#505a5f', padding: '20px' }}>
+            No files uploaded yet. Use the upload section above to add files.
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
+            {files.map(file => (
+              <div key={file.fileId || file.id} style={{ background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #b1b4b6' }}>
+                <strong>{file.name}</strong>
+                <p style={{ margin: '5px 0', fontSize: '0.9rem', color: '#505a5f' }}>
+                  Size: {Math.round(file.size / 1024)}KB
+                </p>
+                <p style={{ margin: '5px 0', fontSize: '0.8rem', color: '#626a6e' }}>
+                  {new Date(file.createdAt).toLocaleDateString()}
+                </p>
+                <div style={{ marginTop: '10px', display: 'flex', gap: '5px' }}>
+                  <button 
+                    onClick={() => {/* TODO: Implement preview */}}
+                    style={{ 
+                      background: '#1d70b8', 
+                      color: 'white', 
+                      padding: '4px 8px', 
+                      border: 'none', 
+                      borderRadius: '2px',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Preview
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Token Management */}
@@ -822,14 +915,18 @@ function Dashboard() {
 
 function App() {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-      </Routes>
-    </AuthProvider>
+    <ErrorBoundary>
+      <NotificationProvider>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Routes>
+        </AuthProvider>
+      </NotificationProvider>
+    </ErrorBoundary>
   );
 }
 
