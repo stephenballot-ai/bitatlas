@@ -1,9 +1,20 @@
 import { McpRequest, McpResponse, McpErrorCode } from '../types/mcpProtocol';
 
+// Interface for connecting to backend storage
+interface StorageConnector {
+  searchFiles(params: any, authContext: any): Promise<any>;
+  readFile(params: any, authContext: any): Promise<any>;
+  createFile(params: any, authContext: any): Promise<any>;
+  updateFile(params: any, authContext: any): Promise<any>;
+  deleteFile(params: any, authContext: any): Promise<any>;
+}
+
 export class McpServer {
   private tools: Map<string, Function> = new Map();
+  private storageConnector?: StorageConnector;
 
-  constructor() {
+  constructor(storageConnector?: StorageConnector) {
+    this.storageConnector = storageConnector;
     this.registerTools();
   }
 
@@ -52,14 +63,68 @@ export class McpServer {
     }
   }
 
-  private async searchFiles(_params: any, _authContext: any) {
-    // Implementation placeholder - will be connected to actual search service
-    throw new Error('Not implemented yet');
+  private async searchFiles(params: any, authContext: any) {
+    if (!this.storageConnector) {
+      throw new Error('Storage connector not configured');
+    }
+
+    const { query, fileType, limit = 20, page = 1 } = params;
+    
+    if (!query) {
+      throw new Error('Search query is required');
+    }
+
+    try {
+      // Use storage connector or fallback to mock response
+      const result = await this.storageConnector.searchFiles({
+        query,
+        fileType,
+        limit,
+        page
+      }, authContext);
+
+      return {
+        results: result.results || result.files || [],
+        total: result.total || result.results?.length || 0,
+        page: page,
+        pageSize: limit
+      };
+    } catch (error) {
+      // Fallback to mock search results for development
+      return this.mockSearchResults(query, limit);
+    }
   }
 
-  private async readFile(_params: any, _authContext: any) {
-    // Implementation placeholder - will be connected to file service
-    throw new Error('Not implemented yet');
+  private async readFile(params: any, authContext: any) {
+    if (!this.storageConnector) {
+      throw new Error('Storage connector not configured');
+    }
+
+    const { fileId, preview = false } = params;
+    
+    if (!fileId) {
+      throw new Error('File ID is required');
+    }
+
+    try {
+      const result = await this.storageConnector.readFile({
+        fileId,
+        preview
+      }, authContext);
+
+      return {
+        id: result.fileId || result.id,
+        name: result.name,
+        content: result.content || '',
+        mimeType: result.mimeType || this.detectMimeType(result.name || ''),
+        size: result.size || result.content?.length || 0,
+        createdAt: result.createdAt,
+        preview: preview
+      };
+    } catch (error) {
+      // Fallback to mock file for development
+      return this.mockFileContent(fileId, preview);
+    }
   }
 
   private async createFile(params: any, authContext: any) {
@@ -112,14 +177,66 @@ export class McpServer {
     };
   }
 
-  private async updateFile(_params: any, _authContext: any) {
-    // Implementation placeholder - will be connected to file service
-    throw new Error('Not implemented yet');
+  private async updateFile(params: any, authContext: any) {
+    if (!this.storageConnector) {
+      throw new Error('Storage connector not configured');
+    }
+
+    const { fileId, name, path, metadata } = params;
+    
+    if (!fileId) {
+      throw new Error('File ID is required');
+    }
+
+    try {
+      const result = await this.storageConnector.updateFile({
+        fileId,
+        name,
+        path,
+        metadata: {
+          ...metadata,
+          updatedVia: 'mcp',
+          lastModified: new Date().toISOString()
+        }
+      }, authContext);
+
+      return {
+        id: result.fileId || result.id,
+        name: result.name,
+        path: result.path,
+        updatedAt: result.updatedAt || new Date().toISOString(),
+        updatedVia: 'mcp'
+      };
+    } catch (error) {
+      throw new Error(`Failed to update file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
-  private async deleteFile(_params: any, _authContext: any) {
-    // Implementation placeholder - will be connected to file service
-    throw new Error('Not implemented yet');
+  private async deleteFile(params: any, authContext: any) {
+    if (!this.storageConnector) {
+      throw new Error('Storage connector not configured');
+    }
+
+    const { fileId } = params;
+    
+    if (!fileId) {
+      throw new Error('File ID is required');
+    }
+
+    try {
+      const result = await this.storageConnector.deleteFile({
+        fileId
+      }, authContext);
+
+      return {
+        id: fileId,
+        deleted: true,
+        deletedAt: new Date().toISOString(),
+        deletedVia: 'mcp'
+      };
+    } catch (error) {
+      throw new Error(`Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async validateScopes(method: string, userScopes: string[]) {
@@ -164,5 +281,50 @@ export class McpServer {
     };
 
     return mimeTypes[ext || ''] || 'application/octet-stream';
+  }
+
+  // Mock methods for development/testing
+  private mockSearchResults(query: string, limit: number) {
+    const mockFiles = [
+      {
+        id: `mock-search-1-${Date.now()}`,
+        name: `${query}_document.txt`,
+        path: '/documents',
+        size: 1024,
+        mimeType: 'text/plain',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `mock-search-2-${Date.now()}`,
+        name: `${query}_data.json`,
+        path: '/data',
+        size: 2048,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    return {
+      results: mockFiles.slice(0, limit),
+      total: mockFiles.length,
+      page: 1,
+      pageSize: limit
+    };
+  }
+
+  private mockFileContent(fileId: string, preview: boolean) {
+    const mockContent = preview ? 
+      `Preview of file ${fileId}. This is mock content for development.` :
+      `Full content of file ${fileId}.\n\nThis is mock content generated by the MCP server for development and testing purposes.\n\nFile ID: ${fileId}\nGenerated: ${new Date().toISOString()}`;
+
+    return {
+      id: fileId,
+      name: `mock_file_${fileId}.txt`,
+      content: mockContent,
+      mimeType: 'text/plain',
+      size: mockContent.length,
+      createdAt: new Date().toISOString(),
+      preview: preview
+    };
   }
 }

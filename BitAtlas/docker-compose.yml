@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: bitatlas
       POSTGRES_USER: bitatlas
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/migrations:/docker-entrypoint-initdb.d/
@@ -42,9 +42,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://bitatlas:password@postgres:5432/bitatlas
+      DATABASE_URL: postgresql://bitatlas:${POSTGRES_PASSWORD}@postgres:5432/bitatlas
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: your-jwt-secret-change-in-production
+      JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: development
     volumes:
       - ./backend:/app

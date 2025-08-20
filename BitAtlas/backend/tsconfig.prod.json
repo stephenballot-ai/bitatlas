@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "sourceMap": false,
+    "removeComments": true,
+    "declaration": false
+  },
+  "include": [
+    "src/index.ts",
+    "src/config/**/*",
+    "src/controllers/**/*",
+    "src/middleware/**/*",
+    "src/models/**/*",
+    "src/routes/**/*",
+    "src/services/**/*",
+    "src/utils/**/*",
+    "src/types/**/*"
+  ],
+  "exclude": [
+    "src/index-simple.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "**/*.d.ts",
+    "node_modules",
+    "dist"
+  ]
+}

@@ -1,20 +1,25 @@
 version: '3.8'
 
 services:
-  # MongoDB Database
-  mongodb:
-    image: mongo:7
-    container_name: bitatlas-mongodb
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: bitatlas-postgres
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
-      MONGO_INITDB_DATABASE: bitatlas
+      POSTGRES_DB: bitatlas
+      POSTGRES_USER: bitatlas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongodb_data:/data/db
-      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bitatlas -d bitatlas"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   # Redis Cache
   redis:
@@ -25,7 +30,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass redis123
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
 
   # Backend API
   backend:
@@ -37,9 +42,9 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: mongodb://admin:password123@mongodb:27017/bitatlas?authSource=admin
-      REDIS_URL: redis://:redis123@redis:6379
-      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      DATABASE_URL: postgresql://bitatlas:${POSTGRES_PASSWORD}@postgres:5432/bitatlas
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
       FRONTEND_URL: http://localhost:3002
       CACHE_PREFIX: bitatlas-dev
     ports:
@@ -49,8 +54,10 @@ services:
       - /app/node_modules
       - uploads_data:/app/uploads
     depends_on:
-      - mongodb
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: npm run dev
 
   # Frontend React App
@@ -73,6 +80,6 @@ services:
     command: npm start
 
 volumes:
-  mongodb_data:
+  postgres_data:
   redis_data:
   uploads_data:

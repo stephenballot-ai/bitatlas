@@ -2,10 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import mongoose from 'mongoose';
 import multer from 'multer';
 import path from 'path';
 import { config } from 'dotenv';
+import { db } from './database/connection';
 
 // Load environment variables
 config();
@@ -223,6 +223,278 @@ app.get('/mcp/v1/search', (req, res) => {
   });
 });
 
+// MCP Tools Discovery
+app.get('/api/v1/mcp/tools', authMiddleware, (req, res) => {
+  const userScopes = req.user?.scopes || [];
+  
+  const tools = [
+    {
+      name: 'searchFiles',
+      description: 'Search through the user\'s files by name, content, or metadata',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query' },
+          limit: { type: 'number', default: 20, maximum: 100 }
+        },
+        required: ['query']
+      },
+      enabled: userScopes.includes('files:read')
+    },
+    {
+      name: 'readFile',
+      description: 'Read the content of a specific file',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          fileId: { type: 'string', description: 'File ID to read' },
+          preview: { type: 'boolean', default: false }
+        },
+        required: ['fileId']
+      },
+      enabled: userScopes.includes('files:read')
+    },
+    {
+      name: 'createFile',
+      description: 'Create a new file with specified content',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'File name' },
+          content: { type: 'string', description: 'File content' },
+          path: { type: 'string', default: '/' }
+        },
+        required: ['name']
+      },
+      enabled: userScopes.includes('files:write')
+    },
+    {
+      name: 'batchOperation',
+      description: 'Perform multiple file operations in a single request',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          operations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                operation: { type: 'string', enum: ['create', 'read', 'update', 'delete', 'search'] },
+                params: { type: 'object' }
+              },
+              required: ['operation', 'params']
+            }
+          }
+        },
+        required: ['operations']
+      },
+      enabled: userScopes.includes('files:write')
+    },
+    {
+      name: 'listFiles',
+      description: 'List files in a directory with pagination',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', default: '/' },
+          page: { type: 'number', default: 1 },
+          limit: { type: 'number', default: 20, maximum: 100 }
+        }
+      },
+      enabled: userScopes.includes('files:read')
+    }
+  ];
+
+  res.json({
+    tools: tools.filter(t => t.enabled).map(({enabled, ...tool}) => tool),
+    version: '1.0',
+    userScopes
+  });
+});
+
+// MCP Call Endpoint
+app.post('/api/v1/mcp/call', authMiddleware, async (req, res) => {
+  try {
+    const { method, params, id } = req.body;
+    
+    if (!method) {
+      return res.status(400).json({
+        id: id || null,
+        error: { code: 'ERR_INVALID_REQUEST', message: 'Method is required' }
+      });
+    }
+
+    // Mock MCP responses for development
+    let result;
+    switch (method) {
+      case 'searchFiles':
+        result = {
+          results: [
+            {
+              id: 'mock-file-1',
+              name: `${params?.query || 'example'}_document.txt`,
+              path: '/documents',
+              size: 1024,
+              mimeType: 'text/plain',
+              createdAt: new Date().toISOString()
+            }
+          ],
+          total: 1
+        };
+        break;
+        
+      case 'readFile':
+        result = {
+          id: params?.fileId || 'unknown',
+          name: 'mock_file.txt',
+          content: `Mock content for file ${params?.fileId || 'unknown'}`,
+          mimeType: 'text/plain',
+          size: 50
+        };
+        break;
+        
+      case 'createFile':
+        result = {
+          fileId: `created-${Date.now()}`,
+          name: params?.name || 'untitled.txt',
+          path: params?.path || '/',
+          createdAt: new Date().toISOString()
+        };
+        break;
+        
+      case 'listFiles':
+        const { path = '/', page = 1, limit = 20 } = params || {};
+        result = {
+          files: [
+            {
+              id: 'list-file-1',
+              name: 'document1.txt',
+              path: path,
+              size: 1024,
+              mimeType: 'text/plain',
+              createdAt: new Date().toISOString()
+            },
+            {
+              id: 'list-file-2', 
+              name: 'data.json',
+              path: path,
+              size: 2048,
+              mimeType: 'application/json',
+              createdAt: new Date().toISOString()
+            }
+          ],
+          total: 2,
+          page,
+          limit,
+          path
+        };
+        break;
+        
+      case 'batchOperation':
+        const operations = params?.operations || [];
+        const batchResults = [];
+        
+        for (const op of operations) {
+          try {
+            switch (op.operation) {
+              case 'create':
+                batchResults.push({
+                  operation: 'create',
+                  success: true,
+                  result: {
+                    fileId: `batch-created-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                    name: op.params?.name || 'batch-file.txt'
+                  }
+                });
+                break;
+              case 'search':
+                batchResults.push({
+                  operation: 'search',
+                  success: true,
+                  result: {
+                    results: [{
+                      id: `batch-search-${Date.now()}`,
+                      name: `${op.params?.query || 'batch'}_result.txt`
+                    }],
+                    total: 1
+                  }
+                });
+                break;
+              default:
+                batchResults.push({
+                  operation: op.operation,
+                  success: false,
+                  error: `Operation ${op.operation} not implemented in demo`
+                });
+            }
+          } catch (error) {
+            batchResults.push({
+              operation: op.operation,
+              success: false,
+              error: `Failed to execute ${op.operation}`
+            });
+          }
+        }
+        
+        result = {
+          operations: batchResults,
+          totalOperations: operations.length,
+          successfulOperations: batchResults.filter(r => r.success).length
+        };
+        break;
+        
+      default:
+        return res.status(400).json({
+          id: id || null,
+          error: { code: 'ERR_INVALID_REQUEST', message: `Unknown method: ${method}` }
+        });
+    }
+
+    res.json({
+      id: id || null,
+      result,
+      version: '1.0'
+    });
+  } catch (error) {
+    res.status(500).json({
+      id: req.body.id || null,
+      error: { code: 'ERR_INTERNAL_ERROR', message: 'Internal server error' }
+    });
+  }
+});
+
+// Simple auth middleware
+function authMiddleware(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ 
+      error: 'Authentication required',
+      code: 'ERR_UNAUTHORIZED'
+    });
+  }
+
+  const token = authHeader.substring(7);
+  
+  // For demo, validate token from our in-memory storage
+  const tokenData = Object.values(oauthTokens).find((t: any) => t.access_token === token);
+  
+  if (!tokenData) {
+    return res.status(401).json({ 
+      error: 'Invalid or expired token',
+      code: 'ERR_UNAUTHORIZED'
+    });
+  }
+
+  // Mock user object with scopes
+  req.user = {
+    userId: 'demo-user-123',
+    scopes: (tokenData as any).scope?.split(' ') || ['files:read', 'files:write']
+  };
+  
+  next();
+}
+
 // In-memory OAuth storage for demo
 let oauthCodes: Record<string, any> = {};
 let oauthTokens: Record<string, any> = {};
@@ -414,14 +686,15 @@ app.delete('/api/tokens/:token', (req, res) => {
 // Database connection
 async function connectDatabase() {
   try {
-    if (process.env.DATABASE_URL) {
-      await mongoose.connect(process.env.DATABASE_URL);
-      console.log('✅ Connected to MongoDB');
+    const dbHealthy = await db.healthCheck();
+    if (dbHealthy) {
+      console.log('✅ Connected to PostgreSQL database');
     } else {
-      console.log('⚠️ No DATABASE_URL provided, running without database');
+      console.log('⚠️ Database health check failed, running with limited functionality');
     }
   } catch (error) {
     console.error('❌ Database connection failed:', error);
+    console.log('ℹ️ Running in development mode with mock responses');
   }
 }
 
