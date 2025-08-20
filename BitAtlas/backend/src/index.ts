@@ -4,6 +4,12 @@ import helmet from 'helmet';
 import compression from 'compression';
 import dotenv from 'dotenv';
 
+// Load environment variables first
+dotenv.config();
+
+// Import and validate configuration
+import { validateEnv, getSafeEnvConfig } from './config/env';
+
 // Import database and middleware
 import { db } from './database/connection';
 import { rateLimiter } from './middleware/rateLimiter';
@@ -14,12 +20,39 @@ import { authRoutes } from './routes/auth';
 import { fileRoutes } from './routes/files';
 import { mcpRoutes } from './routes/mcp';
 import { oauthRoutes } from './routes/oauth';
+import { gdprRoutes } from './routes/gdpr';
 
-// Load environment variables
-dotenv.config();
+// Import services
+import { initializeLogger } from './services/logger';
+import { initializeMonitoring } from './services/monitoring';
+import { initializeSecrets } from './services/secretsManager';
+import { requestLogger, errorLogger } from './middleware/requestLogger';
+
+// Validate environment configuration
+let config;
+try {
+  config = validateEnv();
+  console.log('✅ Environment configuration validated');
+  console.log('📋 Configuration:', getSafeEnvConfig(config));
+} catch (error) {
+  console.error('❌ Environment validation failed:', error.message);
+  process.exit(1);
+}
+
+// Initialize services
+const logger = initializeLogger(config);
+const monitoring = initializeMonitoring(config);
+
+// Initialize secrets manager
+try {
+  await initializeSecrets();
+} catch (error) {
+  logger.error('Failed to initialize secrets manager', { error: error.message });
+  process.exit(1);
+}
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = config.PORT;
 
 // Trust proxy for rate limiting (important for production)
 app.set('trust proxy', 1);
@@ -52,28 +85,14 @@ app.use(rateLimiter.ipLimiter(15 * 60 * 1000, 100)); // 100 requests per 15 minu
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`${req.method} ${req.path}`, {
-      body: req.method !== 'GET' ? req.body : undefined,
-      query: req.query,
-      ip: req.ip
-    });
-  }
-  next();
-});
+// Production request logging
+app.use(requestLogger);
 
-// Health check endpoint
+// Enhanced health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    const dbHealthy = await db.healthCheck();
-    res.json({ 
-      status: dbHealthy ? 'OK' : 'DEGRADED',
-      timestamp: new Date().toISOString(),
-      database: dbHealthy ? 'connected' : 'disconnected',
-      version: '1.0.0'
-    });
+    const healthCheck = await monitoring.getHealthCheck();
+    res.status(healthCheck.status === 'unhealthy' ? 503 : 200).json(healthCheck);
   } catch (error) {
     res.status(503).json({
       status: 'ERROR',
@@ -92,6 +111,9 @@ app.use('/oauth', oauthRoutes);
 // Token management API routes
 app.use('/api/tokens', oauthRoutes);
 
+// GDPR compliance API routes
+app.use('/api/gdpr', gdprRoutes);
+
 // Legacy status endpoint
 app.get('/api/v1/status', (req, res) => {
   res.json({ 
@@ -104,6 +126,9 @@ app.get('/api/v1/status', (req, res) => {
 
 // 404 handler
 app.use(errorHandler.notFound);
+
+// Error logging middleware
+app.use(errorLogger);
 
 // Global error handler
 app.use(errorHandler.handle);
