@@ -62,9 +62,54 @@ export class McpServer {
     throw new Error('Not implemented yet');
   }
 
-  private async createFile(_params: any, _authContext: any) {
-    // Implementation placeholder - will be connected to file service
-    throw new Error('Not implemented yet');
+  private async createFile(params: any, authContext: any) {
+    if (!params.name) {
+      throw new Error('File name is required');
+    }
+
+    if (!authContext.userId) {
+      throw new Error('User authentication required');
+    }
+
+    // For MCP, we expect content to be provided as string (text or base64)
+    const content = params.content || '';
+    const path = params.path || '/';
+    const metadata = params.metadata || {};
+
+    // Add MCP-specific metadata
+    metadata.createdVia = 'mcp';
+    metadata.clientId = authContext.clientId || 'unknown';
+    metadata.timestamp = new Date().toISOString();
+
+    // TODO: In production, this would integrate with the storage orchestrator
+    // For now, we'll simulate the file creation process
+    
+    // Detect if content is base64 encoded (for binary files)
+    let actualSize = content.length;
+    let contentType = 'text';
+    
+    try {
+      // Try to detect base64 content
+      if (content.match(/^[A-Za-z0-9+/]*={0,2}$/) && content.length % 4 === 0) {
+        // Likely base64 - calculate actual size
+        actualSize = Math.floor(content.length * 3 / 4);
+        contentType = 'base64';
+      }
+    } catch (error) {
+      // Not base64, treat as text
+    }
+
+    return {
+      fileId: `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: params.name,
+      path: path,
+      size: actualSize,
+      mimeType: this.detectMimeType(params.name),
+      createdAt: new Date().toISOString(),
+      createdVia: 'mcp',
+      contentType,
+      metadata
+    };
   }
 
   private async updateFile(_params: any, _authContext: any) {
@@ -92,5 +137,32 @@ export class McpServer {
     if (!hasPermission) {
       throw new Error('Insufficient permissions');
     }
+  }
+
+  private detectMimeType(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    
+    const mimeTypes: Record<string, string> = {
+      'txt': 'text/plain',
+      'md': 'text/markdown',
+      'json': 'application/json',
+      'js': 'text/javascript',
+      'ts': 'text/typescript',
+      'html': 'text/html',
+      'css': 'text/css',
+      'csv': 'text/csv',
+      'xml': 'application/xml',
+      'pdf': 'application/pdf',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml',
+      'zip': 'application/zip',
+      'tar': 'application/x-tar',
+      'gz': 'application/gzip'
+    };
+
+    return mimeTypes[ext || ''] || 'application/octet-stream';
   }
 }
