@@ -31,19 +31,19 @@ Make sure you have the following installed:
    ```
 
 4. **Access the application:**
-   - **Frontend:** http://localhost:3001
+   - **Frontend:** http://localhost:5173 (Vite dev server)
    - **Backend API:** http://localhost:3000
-   - **MongoDB:** localhost:27017
-   - **Redis:** localhost:6379
+   - **In-Memory Storage:** Demo mode (no external database required)
 
 ## What You'll See
 
-### 🌐 Frontend (http://localhost:3001)
+### 🌐 Frontend (http://localhost:5173)
 - **Homepage** with BitAtlas branding using GOV.UK design system
-- **User Registration/Login** with secure authentication
-- **File Dashboard** for uploading, organizing, and managing files
-- **Security Panel** with MFA settings and audit logs
-- **Privacy Center** with GDPR data export/deletion
+- **User Registration/Login** with secure authentication and enhanced error handling
+- **File Dashboard** with classic file system tree UI and folder management
+- **File Upload** with 50MB limit and enhanced error messages
+- **File Preview** with support for text files and images
+- **Multi-select operations** for batch file management
 
 ### 🔧 Backend API (http://localhost:3000)
 - **REST API** for file operations and user management
@@ -53,21 +53,26 @@ Make sure you have the following installed:
 
 ## Key Features You Can Test
 
-### 🔐 User Authentication
-1. Register a new account at http://localhost:3001/register
-2. Login with your credentials
-3. Access the protected dashboard
+### 🔐 User Authentication  
+1. Register a new account at http://localhost:5173/register
+2. Login with your credentials at http://localhost:5173/login
+3. Access the protected dashboard at http://localhost:5173/dashboard
 
-### 📁 File Management
-1. Upload files via drag-and-drop interface
-2. Create folders and organize files
-3. Search through your files with full-text search
-4. Download and share files
+### 📁 File Management (Phase 1 Features)
+1. **Upload files** up to 50MB with enhanced error handling
+2. **Classic file system UI** - Windows Explorer/macOS Finder style interface
+3. **Folder hierarchy** - Create nested folders (up to 5 levels deep)
+4. **File operations** - Delete files with soft delete/trash functionality
+5. **Multi-select** - Select multiple files for batch operations
+6. **File preview** - Enhanced preview for text files and images
+7. **Folder navigation** - Collapsible tree sidebar with breadcrumb trail
 
-### 🤖 MCP Integration (AI Assistant Access)
-1. Visit: http://localhost:3000/oauth/authorize?client_id=test-ai-assistant&response_type=code&scope=read%20search%20files:read&redirect_uri=http://localhost:8080/oauth/callback&code_challenge=example&code_challenge_method=S256&state=test
-2. Grant permissions to the test AI assistant
-3. Use the MCP API endpoints to search and access files
+### 🤖 MCP Integration (AI Assistant Access) 
+1. **OAuth Authorization**: Visit http://localhost:3000/oauth/authorize?client_id=test-ai&response_type=code&scope=read%20search&redirect_uri=http://localhost:8080&state=test
+2. **Grant Permissions**: Click "✅ Allow Access" (now works in Safari with intermediate success page)
+3. **Token Generation**: System generates access token and redirects to dashboard
+4. **Test Button Page**: For debugging, visit http://localhost:3000/test-buttons
+5. **API Testing**: Use generated tokens with MCP endpoints
 
 ### 🛡️ Security Features
 1. Check security status in the dashboard
@@ -94,30 +99,38 @@ docker-compose -f docker-compose.local.yml down -v
 
 ## Development Mode
 
-For development with hot reloading:
+For development with hot reloading (current setup):
 
 ```bash
-# Start just the databases
-docker-compose -f docker-compose.local.yml up mongodb redis -d
+# Run backend in demo mode (in-memory storage)
+cd backend && npm run dev:simple
 
-# Run backend in dev mode
-cd backend && npm run dev
-
-# In another terminal, run frontend in dev mode
+# In another terminal, run frontend in dev mode  
 cd frontend && npm run dev
 ```
+
+The system will start:
+- **Backend**: http://localhost:3000 (with in-memory storage for demo)
+- **Frontend**: http://localhost:5173 (Vite dev server with hot reload)
 
 ## Troubleshooting
 
 ### Port Conflicts
-If ports are already in use, you can modify the ports in `docker-compose.local.yml`:
-- Frontend: Change `3001:3000` to `4001:3000`
-- Backend: Change `3000:3000` to `4000:3000`
+If ports are already in use:
+- **Backend**: Running on port 3000 - modify `PORT` environment variable
+- **Frontend**: Running on port 5173 - Vite will auto-increment if busy (5174, 5175, etc.)
 
-### Database Connection Issues
-1. Ensure Docker containers are running: `docker ps`
-2. Check logs: `docker-compose -f docker-compose.local.yml logs`
-3. Restart if needed: `docker-compose -f docker-compose.local.yml restart`
+### Recent Fixes Applied
+- ✅ **Registration Error Handling**: Enhanced error messages for better debugging
+- ✅ **File Upload Issues**: Increased limit to 50MB with proper MulterError handling  
+- ✅ **OAuth Authorization**: Fixed CSP security policy blocking JavaScript execution
+- ✅ **Safari Compatibility**: Added intermediate success page for OAuth redirects
+
+### In-Memory Storage (Current Setup)
+The demo runs with in-memory storage, so no external database is required:
+- **Files**: Stored in `uploads/` directory
+- **Data**: Reset when backend restarts
+- **Persistence**: Files persist, but metadata resets
 
 ### Dependency Issues
 ```bash
@@ -147,12 +160,34 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 ## Architecture
 
-The local deployment includes:
-- **MongoDB** for primary data storage
-- **Redis** for caching and session management  
-- **Express.js API** with TypeScript
-- **React frontend** with GOV.UK design system
-- **MCP integration** for AI assistant access
-- **OAuth 2.0** for secure third-party authorization
+The current demo deployment includes:
+- **In-Memory Storage** for fast demo performance (no external DB required)
+- **Express.js API** with TypeScript and enhanced error handling  
+- **React frontend** with Vite dev server and classic file system UI
+- **Helmet.js security** with configured CSP for OAuth functionality
+- **Multer file handling** with 50MB limit and comprehensive error handling
+- **MCP integration** with working OAuth 2.0 authorization flow
+- **Safari-compatible** OAuth redirects with intermediate success pages
 
-Enjoy exploring BitAtlas! 🚀
+## 🎉 Latest Updates (August 2025)
+
+BitAtlas Phase 1 implementation is now **complete** with all major features working:
+
+### ✅ **Working Features**
+- **User Registration/Login** with enhanced error messages
+- **File Upload System** with 50MB limit and proper error handling
+- **Classic File System UI** - Professional Windows/macOS style interface  
+- **Folder Management** - Create, navigate, and organize with hierarchy
+- **File Operations** - Delete, restore, multi-select batch operations
+- **OAuth Authorization** - Full working flow with Safari compatibility
+- **File Preview System** - Enhanced preview for text files and images
+
+### 🔧 **Technical Improvements**
+- **CSP Security Configuration** - Properly configured Helmet.js
+- **Safari Compatibility** - Fixed OAuth redirect issues
+- **Error Handling** - Comprehensive error messages throughout
+- **File Size Limits** - Increased from 10MB to 50MB with proper validation
+
+All core functionality is **production-ready** for demo purposes!
+
+Enjoy exploring BitAtlas! 🚀✨

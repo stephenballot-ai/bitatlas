@@ -15,7 +15,23 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline JavaScript
+      scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers like onclick
+      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline CSS
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      upgradeInsecureRequests: null, // Disable HTTPS upgrade forcing
+    },
+  },
+}));
 app.use(compression());
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3002',
@@ -37,7 +53,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   fileFilter: (req, file, cb) => {
     // Accept most common file types
     const allowedExtensions = /\.(jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip)$/i;
@@ -313,48 +329,62 @@ app.get('/api/files/:fileId', (req, res) => {
   }
 });
 
-app.post('/api/files/upload', upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-    
-    const { folderId } = req.body; // Support folder assignment
-    
-    // Validate folder exists if folderId provided
-    if (folderId && folderId !== 'root') {
-      const folder = folders.find(f => f.id === folderId);
-      if (!folder) {
-        return res.status(404).json({ error: 'Target folder not found' });
+app.post('/api/files/upload', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum size is 50MB.' });
+      } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ error: 'Invalid file field name. Expected "file".' });
+      } else if (err.message && err.message.includes('File type not allowed')) {
+        return res.status(400).json({ error: err.message });
+      } else {
+        return res.status(400).json({ error: 'Upload failed: ' + err.message });
       }
     }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
     
-    const fileInfo = {
-      id: Date.now().toString(),
-      name: req.file.originalname,
-      filename: req.file.filename,
-      size: req.file.size,
-      mimetype: req.file.mimetype,
-      folderId: folderId || 'root', // Assign to folder or root
-      createdAt: new Date().toISOString(),
-      path: req.file.path
-    };
-    
-    uploadedFiles.push(fileInfo);
-    
-    // Update folder file count
-    const targetFolder = folders.find(f => f.id === (folderId || 'root'));
-    if (targetFolder) {
-      targetFolder.fileCount += 1;
+      const { folderId } = req.body; // Support folder assignment
+      
+      // Validate folder exists if folderId provided
+      if (folderId && folderId !== 'root') {
+        const folder = folders.find(f => f.id === folderId);
+        if (!folder) {
+          return res.status(404).json({ error: 'Target folder not found' });
+        }
+      }
+      
+      const fileInfo = {
+        id: Date.now().toString(),
+        name: req.file.originalname,
+        filename: req.file.filename,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+        folderId: folderId || 'root', // Assign to folder or root
+        createdAt: new Date().toISOString(),
+        path: req.file.path
+      };
+      
+      uploadedFiles.push(fileInfo);
+      
+      // Update folder file count
+      const targetFolder = folders.find(f => f.id === (folderId || 'root'));
+      if (targetFolder) {
+        targetFolder.fileCount += 1;
+      }
+      
+      res.json({
+        message: 'File uploaded successfully',
+        file: fileInfo
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Upload failed: ' + (error as Error).message });
     }
-    
-    res.json({
-      message: 'File uploaded successfully',
-      file: fileInfo
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Upload failed: ' + (error as Error).message });
-  }
+  });
 });
 
 // MCP endpoints (simplified for demo)
@@ -1130,31 +1160,52 @@ app.get('/oauth/authorize', (req, res) => {
         </ul>
         
         <div class="buttons">
-          <button class="allow" onclick="authorize()">✅ Allow Access</button>
-          <button class="deny" onclick="deny()">❌ Deny Access</button>
+          <button class="allow" onclick="authorize();">✅ Allow Access</button>
+          <button class="deny" onclick="deny();">❌ Deny Access</button>
         </div>
         
         <script>
+          console.log('OAuth authorization page loaded');
+          
           function authorize() {
-            console.log('Authorize button clicked');
+            console.log('Authorization button clicked');
             
-            // Show loading state
+            // Show loading state on button
             const button = document.querySelector('.allow');
-            button.textContent = '⏳ Generating token...';
-            button.disabled = true;
+            if (button) {
+              button.textContent = '⏳ Generating Token...';
+              button.disabled = true;
+            }
             
-            // Redirect to a server endpoint that will generate the token and redirect
-            const redirectUrl = 'http://localhost:3001/oauth/approve?client_id=${client_id}&scope=${scope}&state=${state}';
-            console.log('Redirecting to:', redirectUrl);
-            
+            // Clean redirect without alerts
             setTimeout(() => {
-              window.location.href = redirectUrl;
-            }, 500); // Small delay to show the loading state
+              try {
+                const redirectUrl = 'http://localhost:3000/oauth/approve?client_id=${client_id}&scope=${encodeURIComponent(scope.toString())}&state=${state}';
+                console.log('Redirecting to:', redirectUrl);
+                window.location.href = redirectUrl;
+              } catch (error) {
+                console.error('Redirect error:', error);
+                if (button) {
+                  button.textContent = '❌ Redirect Failed';
+                  button.style.background = '#d4351c';
+                }
+              }
+            }, 800);
           }
           
           function deny() {
-            const authUrl = '${process.env.FRONTEND_URL || 'http://localhost:3002'}/dashboard?oauth_error=access_denied&state=${state}&client_id=${client_id}';
-            window.location.href = authUrl;
+            console.log('Access denied');
+            
+            // Show loading state on button  
+            const button = document.querySelector('.deny');
+            if (button) {
+              button.textContent = '⏳ Denying Access...';
+              button.disabled = true;
+            }
+            
+            setTimeout(() => {
+              window.location.href = '${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard?oauth_error=access_denied&state=${state}&client_id=${client_id}';
+            }, 500);
           }
         </script>
       </body>
@@ -1167,7 +1218,7 @@ app.get('/oauth/approve', (req, res) => {
   const { client_id, scope, state } = req.query;
   
   if (!client_id || !scope) {
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     return res.redirect(`${frontendUrl}/dashboard?oauth_error=missing_parameters&state=${state}`);
   }
   
@@ -1175,15 +1226,138 @@ app.get('/oauth/approve', (req, res) => {
     // Generate access token
     const tokenData = generateAccessToken(client_id.toString(), scope.toString());
     
-    // Redirect back to frontend with token
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
-    const redirectUrl = `${frontendUrl}/dashboard?oauth_success=true&access_token=${tokenData.access_token}&token_type=${tokenData.token_type}&expires_in=${tokenData.expires_in}&scope=${encodeURIComponent(tokenData.scope)}&state=${state}&client_id=${client_id}`;
+    // Create success page with shorter redirect URL (Safari-friendly)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     
-    res.redirect(redirectUrl);
+    // Store token temporarily for shorter URL
+    const sessionId = `oauth_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+    
+    // Store in memory (in production this would be Redis/database)
+    if (!global.oauthSessions) {
+      global.oauthSessions = new Map();
+    }
+    
+    global.oauthSessions.set(sessionId, {
+      success: true,
+      accessToken: tokenData.access_token,
+      tokenType: tokenData.token_type,
+      expiresIn: tokenData.expires_in,
+      scope: tokenData.scope,
+      clientId: client_id,
+      state: state,
+      timestamp: Date.now(),
+      expires: Date.now() + (5 * 60 * 1000) // 5 minute expiry
+    });
+    
+    // Shorter redirect URL
+    const redirectUrl = `${frontendUrl}/dashboard?session=${sessionId}`;
+    
+    res.send(`
+      <html>
+        <head>
+          <title>Authorization Successful</title>
+          <style>
+            body { font-family: system-ui; max-width: 500px; margin: 100px auto; text-align: center; padding: 20px; }
+            .success { color: #00703c; font-size: 1.2em; margin: 20px 0; }
+            .redirect-info { background: #f3f2f1; padding: 20px; border-radius: 4px; margin: 20px 0; }
+            button { background: #1d70b8; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+          </style>
+        </head>
+        <body>
+          <h1>✅ Authorization Successful!</h1>
+          <div class="success">
+            Your access token has been generated successfully.
+          </div>
+          <div class="redirect-info">
+            <p><strong>Client:</strong> ${client_id}</p>
+            <p><strong>Scope:</strong> ${scope}</p>
+            <p><strong>Token:</strong> ${tokenData.access_token.substring(0, 20)}...</p>
+          </div>
+          <p>Click below to return to BitAtlas:</p>
+          <button onclick="goToDashboard()">Return to Dashboard</button>
+          
+          <script>
+            let redirectCompleted = false;
+            
+            function goToDashboard() {
+              if (redirectCompleted) return;
+              redirectCompleted = true;
+              
+              console.log('Manual redirect clicked');
+              const url = '${redirectUrl}';
+              console.log('Redirecting to:', url);
+              
+              // Update button state
+              const button = document.querySelector('button');
+              if (button) {
+                button.textContent = '⏳ Redirecting...';
+                button.disabled = true;
+              }
+              
+              setTimeout(() => {
+                window.location.href = url;
+              }, 300);
+            }
+            
+            // Auto-redirect after 2 seconds (cleaner, no alerts)
+            setTimeout(() => {
+              if (redirectCompleted) return;
+              redirectCompleted = true;
+              
+              console.log('Auto-redirecting to dashboard...');
+              const url = '${redirectUrl}';
+              console.log('Auto-redirect URL:', url);
+              
+              // Show countdown
+              const button = document.querySelector('button');
+              if (button) {
+                button.textContent = '⏳ Redirecting automatically...';
+                button.disabled = true;
+              }
+              
+              window.location.href = url;
+            }, 2000);
+            
+            console.log('OAuth token generated successfully');
+            console.log('Session-based redirect URL: ${redirectUrl}');
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/dashboard?oauth_error=token_generation_failed&state=${state}&client_id=${client_id}`);
   }
+});
+
+// OAuth session endpoint (for retrieving stored session data)
+app.get('/oauth/session/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  
+  if (!global.oauthSessions || !global.oauthSessions.has(sessionId)) {
+    return res.status(404).json({ error: 'Session not found or expired' });
+  }
+  
+  const sessionData = global.oauthSessions.get(sessionId);
+  
+  // Check if session has expired
+  if (Date.now() > sessionData.expires) {
+    global.oauthSessions.delete(sessionId);
+    return res.status(410).json({ error: 'Session expired' });
+  }
+  
+  // Return session data and delete it (single use)
+  global.oauthSessions.delete(sessionId);
+  
+  res.json({
+    oauth_success: 'true',
+    access_token: sessionData.accessToken,
+    token_type: sessionData.tokenType,
+    expires_in: sessionData.expiresIn,
+    scope: sessionData.scope,
+    client_id: sessionData.clientId,
+    state: sessionData.state
+  });
 });
 
 // OAuth token generation endpoint (for demo authorization flow)

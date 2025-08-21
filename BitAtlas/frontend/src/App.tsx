@@ -228,7 +228,23 @@ function LoginPage() {
       login(response.data.token, response.data.user);
       navigate('/dashboard');
     } catch (error) {
-      setError('Login failed: ' + (error as any).response?.data?.error || 'Invalid credentials');
+      console.error('Login error:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          // Server responded with error status
+          const errorMessage = error.response.data?.error || error.response.data?.message || 'Invalid credentials';
+          setError('Login failed: ' + errorMessage);
+        } else if (error.request) {
+          // Request was made but no response received
+          setError('No response from server. Please check your connection.');
+        } else {
+          // Something else happened
+          setError('Request failed: ' + error.message);
+        }
+      } else {
+        setError('Login failed: ' + (error as Error).message);
+      }
     } finally {
       setLoading(false);
     }
@@ -344,7 +360,23 @@ function RegisterPage() {
       alert('Registration successful! You can now sign in.');
       navigate('/login');
     } catch (error) {
-      setErrors(['Registration failed: ' + (error as any).response?.data?.error]);
+      console.error('Registration error:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          // Server responded with error status
+          const errorMessage = error.response.data?.error || error.response.data?.message || 'Registration failed';
+          setErrors([errorMessage]);
+        } else if (error.request) {
+          // Request was made but no response received
+          setErrors(['No response from server. Please check your connection.']);
+        } else {
+          // Something else happened
+          setErrors(['Request failed: ' + error.message]);
+        }
+      } else {
+        setErrors(['Registration failed: ' + (error as Error).message]);
+      }
     } finally {
       setLoading(false);
     }
@@ -519,8 +551,46 @@ function Dashboard() {
     const expiresIn = urlParams.get('expires_in');
     const clientId = urlParams.get('client_id');
     const scope = urlParams.get('scope');
+    const sessionId = urlParams.get('session');
     
-    if (oauthSuccess === 'true' && accessToken) {
+    // Handle session-based OAuth flow
+    if (sessionId) {
+      console.log('Found OAuth session ID:', sessionId);
+      
+      // Fetch session data from backend
+      axios.get(`http://localhost:3000/oauth/session/${sessionId}`)
+        .then(response => {
+          const data = response.data;
+          console.log('Retrieved OAuth session data:', data);
+          
+          setOauthResult({
+            success: true,
+            accessToken: data.access_token,
+            tokenType: data.token_type,
+            expiresIn: data.expires_in,
+            clientId: data.client_id,
+            scope: data.scope,
+            message: 'Access token generated successfully via session!',
+            timestamp: new Date().toISOString()
+          });
+          
+          // Refresh tokens list
+          loadTokens();
+          
+          // Clean up URL
+          window.history.replaceState({}, document.title, '/dashboard');
+        })
+        .catch(error => {
+          console.error('Failed to retrieve OAuth session:', error);
+          setOauthResult({
+            success: false,
+            message: 'Failed to retrieve OAuth session: ' + (error.response?.data?.error || 'Unknown error'),
+            timestamp: new Date().toISOString()
+          });
+        });
+    }
+    // Handle direct parameter OAuth flow (legacy)
+    else if (oauthSuccess === 'true' && accessToken) {
       setOauthResult({
         success: true,
         accessToken,
@@ -1780,55 +1850,198 @@ function Dashboard() {
 
       {/* Token Management */}
       <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
-        <h3 style={{ marginTop: 0 }}>🔑 Active Access Tokens</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🔑 Active Access Tokens
+            {tokens.length > 0 && (
+              <span style={{ 
+                background: tokens.filter(t => !t.is_expired).length > 1 ? '#d4351c' : '#1d70b8', 
+                color: 'white', 
+                padding: '2px 8px', 
+                borderRadius: '12px', 
+                fontSize: '0.75rem',
+                fontWeight: 'normal'
+              }}>
+                {tokens.filter(t => !t.is_expired).length} active
+              </span>
+            )}
+          </h3>
+          {tokens.filter(t => !t.is_expired).length > 1 && (
+            <div style={{ 
+              background: '#fef7f7', 
+              border: '1px solid #d4351c', 
+              color: '#d4351c', 
+              padding: '4px 8px', 
+              borderRadius: '4px', 
+              fontSize: '0.7rem',
+              fontWeight: 'bold'
+            }}>
+              💰 PAID PLAN REQUIRED
+            </div>
+          )}
+        </div>
+
+        {/* Pricing Warning */}
+        {tokens.filter(t => !t.is_expired).length === 0 && (
+          <div style={{ 
+            background: '#e8f4f8', 
+            border: '1px solid #1d70b8', 
+            padding: '12px', 
+            borderRadius: '4px', 
+            marginBottom: '15px',
+            fontSize: '0.85rem'
+          }}>
+            <div style={{ fontWeight: 'bold', color: '#1d70b8', marginBottom: '4px' }}>💡 Token Pricing</div>
+            <div style={{ color: '#0b0c0c' }}>
+              • <strong>First token:</strong> FREE (included in your plan)<br/>
+              • <strong>Additional tokens:</strong> $5/month per token<br/>
+              • <strong>Enterprise plans:</strong> Unlimited tokens available
+            </div>
+          </div>
+        )}
+        
+        {tokens.filter(t => !t.is_expired).length === 1 && (
+          <div style={{ 
+            background: '#fff3cd', 
+            border: '1px solid #ffc107', 
+            padding: '12px', 
+            borderRadius: '4px', 
+            marginBottom: '15px',
+            fontSize: '0.85rem'
+          }}>
+            <div style={{ fontWeight: 'bold', color: '#856404', marginBottom: '4px' }}>⚠️ Multiple Token Pricing</div>
+            <div style={{ color: '#856404' }}>
+              You're using your <strong>1 free token</strong>. Additional tokens cost <strong>$5/month each</strong>. 
+              <a href="#upgrade" style={{ color: '#1d70b8', textDecoration: 'underline' }}>Upgrade to Pro</a> for more tokens.
+            </div>
+          </div>
+        )}
+
+        {tokens.filter(t => !t.is_expired).length > 1 && (
+          <div style={{ 
+            background: '#fef7f7', 
+            border: '1px solid #d4351c', 
+            padding: '12px', 
+            borderRadius: '4px', 
+            marginBottom: '15px',
+            fontSize: '0.85rem'
+          }}>
+            <div style={{ fontWeight: 'bold', color: '#d4351c', marginBottom: '4px' }}>💳 Paid Plan Active</div>
+            <div style={{ color: '#d4351c' }}>
+              You have <strong>{tokens.filter(t => !t.is_expired).length} active tokens</strong>. 
+              Cost: <strong>$5/month × {tokens.filter(t => !t.is_expired).length - 1} = ${(tokens.filter(t => !t.is_expired).length - 1) * 5}/month</strong> 
+              (plus 1 free token). <a href="#billing" style={{ color: '#1d70b8', textDecoration: 'underline' }}>View billing</a>
+            </div>
+          </div>
+        )}
+        
         {tokens.length === 0 ? (
-          <p style={{ color: '#505a5f' }}>No active tokens. Generate one using the OAuth flow below.</p>
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#505a5f' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🚫</div>
+            <p style={{ margin: '0 0 10px 0', fontSize: '1.1rem', fontWeight: 'bold' }}>No Active Tokens</p>
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>Generate your first access token using the OAuth authorization flow below.</p>
+          </div>
         ) : (
-          <div style={{ display: 'grid', gap: '15px' }}>
-            {tokens.map(token => (
+          <div style={{ display: 'grid', gap: '12px' }}>
+            {tokens.map((token, index) => (
               <div key={token.access_token} style={{ 
                 background: 'white', 
-                padding: '15px', 
+                padding: '16px', 
                 borderRadius: '4px', 
-                border: `1px solid ${token.is_expired ? '#d4351c' : '#b1b4b6'}` 
+                border: `2px solid ${token.is_expired ? '#d4351c' : '#00703c'}`,
+                position: 'relative'
               }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '0.9rem', marginBottom: '10px' }}>
-                  <div><strong>Client:</strong> {token.client_id}</div>
-                  <div><strong>Scope:</strong> {token.scope}</div>
-                  <div><strong>Created:</strong> {new Date(token.created_at).toLocaleDateString()}</div>
-                  <div><strong>Expires:</strong> {new Date(token.expires_at).toLocaleDateString()}</div>
-                  <div><strong>Status:</strong> 
-                    <span style={{ color: token.is_expired ? '#d4351c' : '#00703c' }}>
-                      {token.is_expired ? ' Expired' : ' Active'}
-                    </span>
+                <div style={{ 
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  background: token.is_expired ? '#d4351c' : '#00703c',
+                  color: 'white',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.7rem',
+                  fontWeight: 'bold'
+                }}>
+                  {token.is_expired ? 'EXPIRED' : 'ACTIVE'}
+                </div>
+                
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+                  gap: '12px', 
+                  fontSize: '0.85rem', 
+                  marginBottom: '12px',
+                  paddingRight: '60px'
+                }}>
+                  <div>
+                    <div style={{ color: '#505a5f', fontSize: '0.75rem', marginBottom: '2px' }}>CLIENT ID</div>
+                    <div style={{ fontWeight: 'bold', color: '#0b0c0c' }}>{token.client_id}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#505a5f', fontSize: '0.75rem', marginBottom: '2px' }}>SCOPE</div>
+                    <div style={{ fontWeight: 'bold', color: '#0b0c0c' }}>{token.scope}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#505a5f', fontSize: '0.75rem', marginBottom: '2px' }}>CREATED</div>
+                    <div style={{ fontWeight: 'bold', color: '#0b0c0c' }}>{new Date(token.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#505a5f', fontSize: '0.75rem', marginBottom: '2px' }}>EXPIRES</div>
+                    <div style={{ fontWeight: 'bold', color: token.is_expired ? '#d4351c' : '#0b0c0c' }}>
+                      {new Date(token.expires_at).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
-                <div style={{ 
-                  background: '#2b2b2b', 
-                  color: '#f8f8f2', 
-                  padding: '8px', 
-                  borderRadius: '4px', 
-                  fontFamily: 'monospace', 
-                  fontSize: '0.75rem',
-                  wordBreak: 'break-all',
-                  marginBottom: '10px'
-                }}>
-                  {token.access_token}
+                
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ color: '#505a5f', fontSize: '0.75rem', marginBottom: '4px' }}>ACCESS TOKEN</div>
+                  <div style={{ 
+                    background: '#f8f8f8', 
+                    border: '1px solid #b1b4b6',
+                    padding: '8px 10px', 
+                    borderRadius: '4px', 
+                    fontFamily: 'ui-monospace, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace', 
+                    fontSize: '0.7rem',
+                    wordBreak: 'break-all',
+                    color: '#0b0c0c',
+                    lineHeight: '1.2'
+                  }}>
+                    {token.access_token}
+                  </div>
                 </div>
-                <button 
-                  onClick={() => revokeToken(token.access_token)}
-                  style={{ 
-                    background: '#d4351c', 
-                    color: 'white', 
-                    padding: '6px 12px', 
-                    border: 'none', 
-                    borderRadius: '4px',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Revoke Token
-                </button>
+                
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => revokeToken(token.access_token)}
+                    style={{ 
+                      background: '#d4351c', 
+                      color: 'white', 
+                      padding: '8px 16px', 
+                      border: 'none', 
+                      borderRadius: '4px',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    🗑️ Revoke Token
+                  </button>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(token.access_token)}
+                    style={{ 
+                      background: '#1d70b8', 
+                      color: 'white', 
+                      padding: '8px 16px', 
+                      border: 'none', 
+                      borderRadius: '4px',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    📋 Copy Token
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1839,11 +2052,52 @@ function Dashboard() {
       <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
         <h3 style={{ marginTop: 0 }}>🤖 AI Assistant Integration</h3>
         <p>Generate a new access token for AI assistants:</p>
+        
+        {/* Pricing warning for additional tokens */}
+        {tokens.filter(t => !t.is_expired).length >= 1 && (
+          <div style={{ 
+            background: '#fff3cd', 
+            border: '2px solid #ffc107', 
+            padding: '15px', 
+            borderRadius: '4px', 
+            marginBottom: '15px',
+            fontSize: '0.9rem'
+          }}>
+            <div style={{ fontWeight: 'bold', color: '#856404', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              ⚠️ Additional Token Pricing
+            </div>
+            <div style={{ color: '#856404', marginBottom: '10px' }}>
+              You already have <strong>{tokens.filter(t => !t.is_expired).length} active token(s)</strong>. 
+              Creating another token will cost <strong>$5/month</strong>.
+            </div>
+            <div style={{ 
+              background: '#fef7f7', 
+              border: '1px solid #d4351c', 
+              padding: '8px', 
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              color: '#d4351c'
+            }}>
+              💳 <strong>Monthly cost for {tokens.filter(t => !t.is_expired).length + 1} tokens:</strong> 
+              ${tokens.filter(t => !t.is_expired).length * 5}/month (plus 1 free)
+            </div>
+          </div>
+        )}
+        
         <button 
           onClick={testOAuth}
-          style={{ background: '#00703c', color: 'white', padding: '12px 20px', border: 'none', borderRadius: '4px', marginBottom: '20px' }}
+          style={{ 
+            background: tokens.filter(t => !t.is_expired).length >= 1 ? '#ffc107' : '#00703c', 
+            color: tokens.filter(t => !t.is_expired).length >= 1 ? '#856404' : 'white', 
+            padding: '12px 20px', 
+            border: 'none', 
+            borderRadius: '4px', 
+            marginBottom: '20px',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
         >
-          Generate New Access Token
+          {tokens.filter(t => !t.is_expired).length >= 1 ? '💰 Generate Paid Token ($5/month)' : '🆓 Generate Free Token'}
         </button>
         
         <div style={{ background: '#e8f4f8', padding: '15px', borderRadius: '4px' }}>
@@ -1871,7 +2125,7 @@ function Dashboard() {
             <li><strong>Test:</strong> Claude can now search and access your BitAtlas files!</li>
           </ol>
           <p style={{ margin: '10px 0 0 0', fontSize: '0.9rem', color: '#505a5f' }}>
-            💡 <strong>Tip:</strong> You can revoke access tokens at any time in the "Active Access Tokens" section above.
+            💡 <strong>Tip:</strong> You can revoke access tokens at any time in the "Active Access Tokens" section above. Remember: additional tokens beyond your first free token cost <strong>$5/month each</strong>.
           </p>
         </div>
       </div>
