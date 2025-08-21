@@ -64,7 +64,7 @@ class ApiService {
   // Auth methods
   async register(data: RegisterRequest): Promise<{ user: User }> {
     const result = await this.request<{ user: User }>(
-      '/api/v1/auth/register',
+      '/api/auth/register',
       {
         method: 'POST',
         body: JSON.stringify(data),
@@ -74,7 +74,7 @@ class ApiService {
   }
 
   async login(data: LoginRequest): Promise<AuthTokens> {
-    const result = await this.request<AuthTokens>('/api/v1/auth/login', {
+    const result = await this.request<AuthTokens>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -91,7 +91,7 @@ class ApiService {
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) {
       try {
-        await this.request('/api/v1/auth/logout', {
+        await this.request('/api/auth/logout', {
           method: 'POST',
           body: JSON.stringify({ refreshToken }),
         });
@@ -107,7 +107,7 @@ class ApiService {
   }
 
   async getProfile(): Promise<{ user: User }> {
-    return this.request('/api/v1/auth/profile');
+    return this.request('/api/auth/profile');
   }
 
   async refreshToken(): Promise<AuthTokens> {
@@ -116,7 +116,7 @@ class ApiService {
       throw new Error('No refresh token available');
     }
 
-    const result = await this.request<AuthTokens>('/api/v1/auth/refresh', {
+    const result = await this.request<AuthTokens>('/api/auth/refresh', {
       method: 'POST',
       body: JSON.stringify({ refreshToken }),
     });
@@ -141,16 +141,16 @@ class ApiService {
     if (params.pageSize) searchParams.set('pageSize', params.pageSize.toString());
 
     const query = searchParams.toString();
-    return this.request(`/api/v1/files${query ? `?${query}` : ''}`);
+    return this.request(`/api/files${query ? `?${query}` : ''}`);
   }
 
   async getFile(fileId: string, preview = false): Promise<{ file: FileContent }> {
     const params = preview ? '?preview=true' : '';
-    return this.request(`/api/v1/files/${fileId}${params}`);
+    return this.request(`/api/files/${fileId}${params}`);
   }
 
   async createFile(data: CreateFileRequest): Promise<{ file: FileMetadata }> {
-    return this.request('/api/v1/files', {
+    return this.request('/api/files', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -160,14 +160,14 @@ class ApiService {
     fileId: string,
     data: UpdateFileRequest
   ): Promise<{ file: FileMetadata }> {
-    return this.request(`/api/v1/files/${fileId}`, {
+    return this.request(`/api/files/${fileId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteFile(fileId: string): Promise<{ success: boolean }> {
-    return this.request(`/api/v1/files/${fileId}`, {
+    return this.request(`/api/files/${fileId}`, {
       method: 'DELETE',
     });
   }
@@ -182,7 +182,7 @@ class ApiService {
     if (params.page) searchParams.set('page', params.page.toString());
     if (params.pageSize) searchParams.set('pageSize', params.pageSize.toString());
 
-    return this.request(`/api/v1/files/search/query?${searchParams}`);
+    return this.request(`/api/files/search/query?${searchParams}`);
   }
 
   async uploadFile(

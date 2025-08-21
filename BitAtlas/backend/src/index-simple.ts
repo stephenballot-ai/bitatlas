@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { config } from 'dotenv';
 import { db } from './database/connection';
 
@@ -39,20 +40,34 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     // Accept most common file types
-    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const allowedExtensions = /\.(jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip)$/i;
+    const allowedMimeTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+      'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain', 'text/csv', 
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/zip'
+    ];
     
-    if (extname && mimetype) {
+    const hasValidExtension = allowedExtensions.test(file.originalname.toLowerCase());
+    const hasValidMimeType = allowedMimeTypes.includes(file.mimetype);
+    
+    if (hasValidExtension && hasValidMimeType) {
       return cb(null, true);
     } else {
-      cb(new Error('Only common file types are allowed!'));
+      cb(new Error(`File type not allowed. Allowed types: jpeg, jpg, png, gif, pdf, doc, docx, txt, csv, xlsx, zip. Received: ${file.mimetype}`));
     }
   }
 });
 
-// In-memory file storage for demo
+// In-memory file storage for demo (Phase 1: Enhanced with soft delete support)
 let uploadedFiles: any[] = [];
+let deletedFiles: any[] = []; // Trash bin for soft-deleted files
+
+// In-memory folder storage for demo (Phase 1: Basic folder hierarchy)
+let folders: any[] = [
+  { id: 'root', name: 'root', parentId: null, path: '/', materialized_path: 'root', depth: 0, fileCount: 0, subfolderCount: 0, createdAt: new Date().toISOString() }
+];
 
 // Basic routes
 app.get('/', (req, res) => {
@@ -98,6 +113,7 @@ app.get('/api/status', (req, res) => {
       ready: '/ready',
       auth: '/api/auth/*',
       files: '/api/files/*',
+      search: '/api/files/search/query',
       mcp: '/mcp/v1/*',
       oauth: '/oauth/*'
     }
@@ -183,10 +199,134 @@ app.get('/api/files', (req, res) => {
   });
 });
 
+// Search files endpoint
+app.get('/api/files/search/query', (req, res) => {
+  const { q } = req.query;
+  
+  if (!q || typeof q !== 'string') {
+    return res.status(400).json({ error: 'Search query is required' });
+  }
+  
+  const query = q.toLowerCase();
+  
+  // Combine default files and uploaded files
+  const defaultFiles = [
+    { id: '1', name: 'document.pdf', size: 1024000, createdAt: new Date().toISOString() },
+    { id: '2', name: 'photo.jpg', size: 2048000, createdAt: new Date().toISOString() },
+    { id: '3', name: 'spreadsheet.xlsx', size: 512000, createdAt: new Date().toISOString() }
+  ];
+  
+  const allFiles = [...defaultFiles, ...uploadedFiles];
+  
+  // Simple search by filename (case-insensitive)
+  const searchResults = allFiles.filter(file => 
+    file.name.toLowerCase().includes(query)
+  );
+  
+  res.json({
+    files: searchResults,
+    total: searchResults.length,
+    query: q
+  });
+});
+
+// Get individual file or preview
+app.get('/api/files/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  const { preview } = req.query;
+  
+  // Combine default files and uploaded files
+  const defaultFiles = [
+    { id: '1', name: 'document.pdf', size: 1024000, createdAt: new Date().toISOString(), type: 'pdf', content: 'This is a sample PDF document content for preview.' },
+    { id: '2', name: 'photo.jpg', size: 2048000, createdAt: new Date().toISOString(), type: 'image', content: null },
+    { id: '3', name: 'spreadsheet.xlsx', size: 512000, createdAt: new Date().toISOString(), type: 'excel', content: 'Sample spreadsheet data for preview.' }
+  ];
+  
+  const allFiles = [...defaultFiles, ...uploadedFiles];
+  
+  const file = allFiles.find(f => f.id === fileId);
+  
+  if (!file) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  
+  // If it's a preview request, add content
+  if (preview === 'true') {
+    let content = '';
+    
+    if (file.type === 'pdf') {
+      content = 'This is a sample PDF document content for preview.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
+    } else if (file.type === 'excel') {
+      content = 'Sample spreadsheet data:\n\nColumn A | Column B | Column C\n---------|----------|----------\nData 1   | Value 1  | 100\nData 2   | Value 2  | 200\nData 3   | Value 3  | 300';
+    } else if (file.mimetype === 'text/plain') {
+      // For uploaded text files, try to read actual content
+      try {
+        if (file.path) {
+          // Ensure we have the correct file path
+          const fullPath = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+          console.log(`Reading file from: ${fullPath}`);
+          content = fs.readFileSync(fullPath, 'utf8');
+        } else {
+          content = 'Text file content preview not available.';
+        }
+      } catch (error) {
+        console.error('Error reading text file:', error);
+        content = `Unable to read file content. Error: ${error.message}`;
+      }
+    } else if (file.mimetype?.startsWith('image/')) {
+      // For images, provide metadata and preview info
+      try {
+        if (file.path) {
+          const fullPath = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+          const stats = fs.statSync(fullPath);
+          content = {
+            type: 'image',
+            previewUrl: `/api/files/${file.id}/raw`, // URL to serve the raw image
+            metadata: {
+              size: stats.size,
+              lastModified: stats.mtime.toISOString(),
+              format: file.mimetype
+            }
+          };
+        } else {
+          content = { type: 'image', error: 'Image file not found on disk' };
+        }
+      } catch (error) {
+        console.error('Error processing image:', error);
+        content = { type: 'image', error: 'Unable to process image file' };
+      }
+    } else {
+      content = 'Preview not available for this file type.';
+    }
+    
+    res.json({
+      file: {
+        ...file,
+        content: content
+      }
+    });
+  } else {
+    // Regular file info without content
+    res.json({
+      file: file
+    });
+  }
+});
+
 app.post('/api/files/upload', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    const { folderId } = req.body; // Support folder assignment
+    
+    // Validate folder exists if folderId provided
+    if (folderId && folderId !== 'root') {
+      const folder = folders.find(f => f.id === folderId);
+      if (!folder) {
+        return res.status(404).json({ error: 'Target folder not found' });
+      }
     }
     
     const fileInfo = {
@@ -195,11 +335,18 @@ app.post('/api/files/upload', upload.single('file'), (req, res) => {
       filename: req.file.filename,
       size: req.file.size,
       mimetype: req.file.mimetype,
+      folderId: folderId || 'root', // Assign to folder or root
       createdAt: new Date().toISOString(),
       path: req.file.path
     };
     
     uploadedFiles.push(fileInfo);
+    
+    // Update folder file count
+    const targetFolder = folders.find(f => f.id === (folderId || 'root'));
+    if (targetFolder) {
+      targetFolder.fileCount += 1;
+    }
     
     res.json({
       message: 'File uploaded successfully',
@@ -461,6 +608,415 @@ app.post('/api/v1/mcp/call', authMiddleware, async (req, res) => {
       error: { code: 'ERR_INTERNAL_ERROR', message: 'Internal server error' }
     });
   }
+});
+
+// Serve raw files (for image preview, downloads, etc.)
+app.get('/api/files/:fileId/raw', (req, res) => {
+  const { fileId } = req.params;
+  
+  // Find file in uploaded files
+  const allFiles = [...uploadedFiles, ...deletedFiles];
+  const file = allFiles.find(f => f.id === fileId);
+  
+  if (!file) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  
+  try {
+    const fullPath = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+    
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File not found on disk' });
+    }
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${file.name}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(fullPath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (error) => {
+      console.error('Error streaming file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error serving file' });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error serving raw file:', error);
+    res.status(500).json({ error: 'Error serving file' });
+  }
+});
+
+// File deletion endpoint (Phase 1: Soft delete with trash)
+app.delete('/api/files/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  const { permanent } = req.query;
+  
+  // Find file in uploaded files
+  const fileIndex = uploadedFiles.findIndex(f => f.id === fileId);
+  
+  if (fileIndex === -1) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  
+  const file = uploadedFiles[fileIndex];
+  
+  if (permanent === 'true') {
+    // Permanent deletion
+    try {
+      // Delete actual file from disk
+      if (file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      
+      // Remove from uploaded files
+      uploadedFiles.splice(fileIndex, 1);
+      
+      // Remove from deleted files if it was there
+      const deletedIndex = deletedFiles.findIndex(f => f.id === fileId);
+      if (deletedIndex !== -1) {
+        deletedFiles.splice(deletedIndex, 1);
+      }
+      
+      res.json({ 
+        message: 'File permanently deleted',
+        fileId: fileId
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete file permanently' });
+    }
+  } else {
+    // Soft delete (move to trash)
+    const deletedFile = {
+      ...file,
+      deletedAt: new Date().toISOString(),
+      isDeleted: true
+    };
+    
+    // Add to deleted files
+    deletedFiles.push(deletedFile);
+    
+    // Remove from active files
+    uploadedFiles.splice(fileIndex, 1);
+    
+    res.json({ 
+      message: 'File moved to trash',
+      fileId: fileId,
+      canRestore: true
+    });
+  }
+});
+
+// Get trash/deleted files
+app.get('/api/trash', (req, res) => {
+  res.json({
+    files: deletedFiles,
+    total: deletedFiles.length
+  });
+});
+
+// Restore file from trash
+app.post('/api/files/:fileId/restore', (req, res) => {
+  const { fileId } = req.params;
+  
+  const deletedIndex = deletedFiles.findIndex(f => f.id === fileId);
+  
+  if (deletedIndex === -1) {
+    return res.status(404).json({ error: 'File not found in trash' });
+  }
+  
+  const file = deletedFiles[deletedIndex];
+  
+  // Remove deletion metadata
+  delete file.deletedAt;
+  delete file.isDeleted;
+  
+  // Move back to active files
+  uploadedFiles.push(file);
+  
+  // Remove from deleted files
+  deletedFiles.splice(deletedIndex, 1);
+  
+  res.json({
+    message: 'File restored successfully',
+    file: file
+  });
+});
+
+// Batch file operations
+app.post('/api/files/batch', (req, res) => {
+  const { operation, fileIds } = req.body;
+  
+  if (!operation || !Array.isArray(fileIds)) {
+    return res.status(400).json({ error: 'Operation and fileIds array required' });
+  }
+  
+  const results = [];
+  
+  for (const fileId of fileIds) {
+    try {
+      if (operation === 'delete') {
+        const fileIndex = uploadedFiles.findIndex(f => f.id === fileId);
+        if (fileIndex !== -1) {
+          const file = uploadedFiles[fileIndex];
+          const deletedFile = {
+            ...file,
+            deletedAt: new Date().toISOString(),
+            isDeleted: true
+          };
+          
+          deletedFiles.push(deletedFile);
+          uploadedFiles.splice(fileIndex, 1);
+          
+          results.push({ fileId, success: true, operation: 'delete' });
+        } else {
+          results.push({ fileId, success: false, error: 'File not found' });
+        }
+      }
+    } catch (error) {
+      results.push({ fileId, success: false, error: error.message });
+    }
+  }
+  
+  res.json({
+    results,
+    total: fileIds.length,
+    successful: results.filter(r => r.success).length
+  });
+});
+
+// Folder management endpoints (Phase 1: Basic folder operations)
+
+// Create new folder
+app.post('/api/folders', (req, res) => {
+  const { name, parentId } = req.body;
+  
+  if (!name) {
+    return res.status(400).json({ error: 'Folder name is required' });
+  }
+  
+  // Validate parent folder exists (if parentId provided)
+  let parentFolder = null;
+  if (parentId && parentId !== 'root') {
+    parentFolder = folders.find(f => f.id === parentId);
+    if (!parentFolder) {
+      return res.status(404).json({ error: 'Parent folder not found' });
+    }
+    
+    // Check depth limit (VP recommendation: max 5 levels)
+    if (parentFolder.depth >= 4) {
+      return res.status(400).json({ error: 'Maximum folder depth of 5 levels exceeded' });
+    }
+  }
+  
+  // Check for duplicate folder names in the same parent
+  const existingFolder = folders.find(f => 
+    f.name === name && f.parentId === (parentId || 'root')
+  );
+  if (existingFolder) {
+    return res.status(400).json({ error: 'Folder with this name already exists in the parent directory' });
+  }
+  
+  const folderId = Date.now().toString();
+  const depth = parentFolder ? parentFolder.depth + 1 : 0;
+  const parentPath = parentFolder ? parentFolder.path : '/';
+  const path = parentPath === '/' ? `/${name}` : `${parentPath}/${name}`;
+  const materialized_path = parentFolder ? 
+    `${parentFolder.materialized_path}/${folderId}` : 
+    folderId;
+  
+  const newFolder = {
+    id: folderId,
+    name,
+    parentId: parentId || 'root',
+    path,
+    materialized_path,
+    depth,
+    fileCount: 0,
+    subfolderCount: 0,
+    createdAt: new Date().toISOString()
+  };
+  
+  folders.push(newFolder);
+  
+  // Update parent's subfolder count
+  if (parentFolder) {
+    parentFolder.subfolderCount += 1;
+  }
+  
+  res.json({
+    message: 'Folder created successfully',
+    folder: newFolder
+  });
+});
+
+// Get folder contents
+app.get('/api/folders/:folderId/contents', (req, res) => {
+  const { folderId } = req.params;
+  
+  // Find the folder
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) {
+    return res.status(404).json({ error: 'Folder not found' });
+  }
+  
+  // Get subfolders
+  const subfolders = folders.filter(f => f.parentId === folderId);
+  
+  // Get files in this folder
+  const folderFiles = uploadedFiles.filter(f => f.folderId === folderId);
+  
+  res.json({
+    folder: folder,
+    subfolders: subfolders,
+    files: folderFiles,
+    totals: {
+      subfolders: subfolders.length,
+      files: folderFiles.length
+    }
+  });
+});
+
+// Get all folders (for folder tree)
+app.get('/api/folders', (req, res) => {
+  res.json({
+    folders: folders,
+    total: folders.length
+  });
+});
+
+// Delete folder
+app.delete('/api/folders/:folderId', (req, res) => {
+  const { folderId } = req.params;
+  const { recursive } = req.query;
+  
+  if (folderId === 'root') {
+    return res.status(400).json({ error: 'Cannot delete root folder' });
+  }
+  
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) {
+    return res.status(404).json({ error: 'Folder not found' });
+  }
+  
+  // Check if folder has contents
+  const hasSubfolders = folders.some(f => f.parentId === folderId);
+  const hasFiles = uploadedFiles.some(f => f.folderId === folderId);
+  
+  if ((hasSubfolders || hasFiles) && recursive !== 'true') {
+    return res.status(400).json({ 
+      error: 'Folder is not empty. Use recursive=true to delete folder and all contents.',
+      hasSubfolders,
+      hasFiles
+    });
+  }
+  
+  // Recursive deletion
+  if (recursive === 'true') {
+    // Delete all files in folder and subfolders
+    const deleteFromFolder = (targetFolderId) => {
+      // Delete files
+      const filesToDelete = uploadedFiles.filter(f => f.folderId === targetFolderId);
+      filesToDelete.forEach(file => {
+        // Move to trash
+        const deletedFile = {
+          ...file,
+          deletedAt: new Date().toISOString(),
+          isDeleted: true
+        };
+        deletedFiles.push(deletedFile);
+        
+        // Remove from active files
+        const fileIndex = uploadedFiles.findIndex(f => f.id === file.id);
+        if (fileIndex !== -1) {
+          uploadedFiles.splice(fileIndex, 1);
+        }
+      });
+      
+      // Delete subfolders recursively
+      const subfolders = folders.filter(f => f.parentId === targetFolderId);
+      subfolders.forEach(subfolder => {
+        deleteFromFolder(subfolder.id);
+      });
+    };
+    
+    deleteFromFolder(folderId);
+  }
+  
+  // Remove the folder itself
+  const folderIndex = folders.findIndex(f => f.id === folderId);
+  if (folderIndex !== -1) {
+    folders.splice(folderIndex, 1);
+  }
+  
+  // Update parent's subfolder count
+  const parentFolder = folders.find(f => f.id === folder.parentId);
+  if (parentFolder) {
+    parentFolder.subfolderCount -= 1;
+  }
+  
+  res.json({
+    message: recursive === 'true' ? 'Folder and all contents deleted' : 'Folder deleted',
+    folderId: folderId
+  });
+});
+
+// Rename folder
+app.put('/api/folders/:folderId', (req, res) => {
+  const { folderId } = req.params;
+  const { name } = req.body;
+  
+  if (!name) {
+    return res.status(400).json({ error: 'Folder name is required' });
+  }
+  
+  if (folderId === 'root') {
+    return res.status(400).json({ error: 'Cannot rename root folder' });
+  }
+  
+  const folder = folders.find(f => f.id === folderId);
+  if (!folder) {
+    return res.status(404).json({ error: 'Folder not found' });
+  }
+  
+  // Check for duplicate names in same parent
+  const existingFolder = folders.find(f => 
+    f.name === name && f.parentId === folder.parentId && f.id !== folderId
+  );
+  if (existingFolder) {
+    return res.status(400).json({ error: 'Folder with this name already exists in the parent directory' });
+  }
+  
+  // Update folder name and path
+  const oldPath = folder.path;
+  folder.name = name;
+  
+  // Update path for this folder and all descendants
+  const parentPath = folder.parentId === 'root' ? '/' : 
+    folders.find(f => f.id === folder.parentId)?.path || '/';
+  const newPath = parentPath === '/' ? `/${name}` : `${parentPath}/${name}`;
+  
+  folder.path = newPath;
+  
+  // Update paths for all descendant folders
+  const updateDescendantPaths = (parentId, oldParentPath, newParentPath) => {
+    const children = folders.filter(f => f.parentId === parentId);
+    children.forEach(child => {
+      child.path = child.path.replace(oldParentPath, newParentPath);
+      updateDescendantPaths(child.id, oldParentPath, newParentPath);
+    });
+  };
+  
+  updateDescendantPaths(folderId, oldPath, newPath);
+  
+  res.json({
+    message: 'Folder renamed successfully',
+    folder: folder
+  });
 });
 
 // Simple auth middleware

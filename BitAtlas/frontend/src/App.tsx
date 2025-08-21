@@ -93,7 +93,7 @@ function HomePage() {
   const { isAuthenticated, user, logout } = useAuth();
 
   useEffect(() => {
-    axios.get('http://localhost:3001/api/status')
+    axios.get('http://localhost:3000/api/status')
       .then(response => setApiStatus(response.data))
       .catch(console.error);
   }, []);
@@ -224,7 +224,7 @@ function LoginPage() {
     }
     
     try {
-      const response = await axios.post('http://localhost:3001/api/auth/login', { email, password });
+      const response = await axios.post('http://localhost:3000/api/auth/login', { email, password });
       login(response.data.token, response.data.user);
       navigate('/dashboard');
     } catch (error) {
@@ -340,7 +340,7 @@ function RegisterPage() {
     }
     
     try {
-      await axios.post('http://localhost:3001/api/auth/register', { email, password });
+      await axios.post('http://localhost:3000/api/auth/register', { email, password });
       alert('Registration successful! You can now sign in.');
       navigate('/login');
     } catch (error) {
@@ -423,9 +423,12 @@ function RegisterPage() {
   );
 }
 
-// Enhanced Dashboard Component
+// Enhanced Dashboard Component (Phase 1: Folders, File Deletion, Enhanced Preview)
 function Dashboard() {
   const [files, setFiles] = useState<any[]>([]);
+  const [folders, setFolders] = useState<any[]>([]);
+  const [currentFolder, setCurrentFolder] = useState<any>({ id: 'root', name: 'Home', path: '/' });
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]); // Multi-select
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -433,6 +436,12 @@ function Dashboard() {
   const [oauthResult, setOauthResult] = useState<any>(null);
   const [tokens, setTokens] = useState<any[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
+  const [previewFile, setPreviewFile] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [deletedFiles, setDeletedFiles] = useState<any[]>([]);
+  const [showTrash, setShowTrash] = useState(false);
   const { user, logout } = useAuth();
   const { showNotification } = useNotifications();
 
@@ -440,7 +449,7 @@ function Dashboard() {
   const loadTokens = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3001/api/tokens', {
+      const response = await axios.get('http://localhost:3000/api/tokens', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       setTokens(response.data.tokens);
@@ -454,26 +463,51 @@ function Dashboard() {
     }
   };
 
-  // Load files
-  const loadFiles = async () => {
+  // Load folders
+  const loadFolders = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:3000/api/folders', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setFolders(response.data.folders || []);
+    } catch (error) {
+      console.error('Failed to load folders:', error);
+    }
+  };
+
+  // Load folder contents (files and subfolders)
+  const loadFolderContents = async (folderId: string = 'root') => {
     try {
       setFilesLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3001/api/v1/files', {
+      const response = await axios.get(`http://localhost:3000/api/folders/${folderId}/contents`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      setFiles(response.data.results || []);
+      
+      setFiles(response.data.files || []);
+      setCurrentFolder(response.data.folder || { id: 'root', name: 'Home', path: '/' });
+      
+      // Update folders list with subfolders
+      const allFoldersResponse = await axios.get('http://localhost:3000/api/folders', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setFolders(allFoldersResponse.data.folders || []);
+      
     } catch (error) {
-      console.error('Failed to load files:', error);
+      console.error('Failed to load folder contents:', error);
       showNotification({
         type: 'error',
-        title: 'Failed to load files',
-        message: 'Unable to fetch your files'
+        title: 'Failed to load folder',
+        message: 'Unable to fetch folder contents'
       });
     } finally {
       setFilesLoading(false);
     }
   };
+
+  // Legacy load files function (now uses folder contents)
+  const loadFiles = () => loadFolderContents(currentFolder.id);
 
   // Check for OAuth callback parameters
   useEffect(() => {
@@ -523,23 +557,31 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    loadFiles();
+    loadFolderContents('root'); // Start with root folder
+    loadFolders(); // Load folder tree
   }, []);
+
+  // Load trash when showing trash view
+  useEffect(() => {
+    if (showTrash) {
+      loadTrash();
+    }
+  }, [showTrash]);
 
   const handleSearch = async () => {
     if (!searchQuery) return;
     
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:3001/api/v1/files/search/query?q=${searchQuery}`, {
+      const response = await axios.get(`http://localhost:3000/api/files/search/query?q=${searchQuery}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      setSearchResults(response.data.results || []);
+      setSearchResults(response.data.files || []);
       
       showNotification({
         type: 'success',
         title: 'Search completed',
-        message: `Found ${response.data.results?.length || 0} files`
+        message: `Found ${response.data.files?.length || 0} files`
       });
     } catch (error) {
       console.error('Search failed:', error);
@@ -557,10 +599,11 @@ function Dashboard() {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', selectedFile);
+    formData.append('folderId', currentFolder.id); // Upload to current folder
     
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:3001/api/v1/files/upload', formData, {
+      await axios.post('http://localhost:3000/api/files/upload', formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
@@ -570,11 +613,11 @@ function Dashboard() {
       showNotification({
         type: 'success',
         title: 'File uploaded successfully',
-        message: `${selectedFile.name} has been uploaded`
+        message: `${selectedFile.name} has been uploaded to ${currentFolder.name}`
       });
       
-      // Refresh files list
-      await loadFiles();
+      // Refresh current folder contents
+      await loadFolderContents(currentFolder.id);
       
       setSelectedFile(null);
     } catch (error) {
@@ -589,6 +632,130 @@ function Dashboard() {
     }
   };
 
+  // Create new folder
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://localhost:3000/api/folders', {
+        name: newFolderName.trim(),
+        parentId: currentFolder.id
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      showNotification({
+        type: 'success',
+        title: 'Folder created',
+        message: `Folder "${newFolderName}" created successfully`
+      });
+      
+      // Refresh current folder contents
+      await loadFolderContents(currentFolder.id);
+      
+      setShowNewFolderDialog(false);
+      setNewFolderName('');
+    } catch (error) {
+      console.error('Create folder failed:', error);
+      showNotification({
+        type: 'error',
+        title: 'Create folder failed',
+        message: (error as any).response?.data?.error || 'Failed to create folder'
+      });
+    }
+  };
+
+  // Delete file(s)
+  const handleDeleteFiles = async (fileIds: string[], permanent: boolean = false) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      if (fileIds.length === 1) {
+        // Single file deletion
+        await axios.delete(`http://localhost:3000/api/files/${fileIds[0]}${permanent ? '?permanent=true' : ''}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } else {
+        // Batch deletion
+        await axios.post('http://localhost:3000/api/files/batch', {
+          operation: 'delete',
+          fileIds: fileIds
+        }, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+      
+      showNotification({
+        type: 'success',
+        title: permanent ? 'Files permanently deleted' : 'Files moved to trash',
+        message: `${fileIds.length} file(s) ${permanent ? 'permanently deleted' : 'moved to trash'}`
+      });
+      
+      // Refresh current view
+      if (showTrash) {
+        await loadTrash();
+      } else {
+        await loadFolderContents(currentFolder.id);
+      }
+      
+      setSelectedFiles([]);
+    } catch (error) {
+      console.error('Delete failed:', error);
+      showNotification({
+        type: 'error',
+        title: 'Delete failed',
+        message: (error as any).response?.data?.error || 'Failed to delete files'
+      });
+    }
+  };
+
+  // Load trash
+  const loadTrash = async () => {
+    try {
+      setFilesLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:3000/api/trash', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setDeletedFiles(response.data.files || []);
+    } catch (error) {
+      console.error('Failed to load trash:', error);
+      showNotification({
+        type: 'error',
+        title: 'Failed to load trash',
+        message: 'Unable to fetch deleted files'
+      });
+    } finally {
+      setFilesLoading(false);
+    }
+  };
+
+  // Restore file from trash
+  const handleRestoreFile = async (fileId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`http://localhost:3000/api/files/${fileId}/restore`, {}, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      showNotification({
+        type: 'success',
+        title: 'File restored',
+        message: 'File has been restored from trash'
+      });
+      
+      await loadTrash(); // Refresh trash view
+    } catch (error) {
+      console.error('Restore failed:', error);
+      showNotification({
+        type: 'error',
+        title: 'Restore failed',
+        message: (error as any).response?.data?.error || 'Failed to restore file'
+      });
+    }
+  };
+
   const testOAuth = () => {
     const params = new URLSearchParams({
       client_id: 'claude-ai-assistant',
@@ -599,13 +766,13 @@ function Dashboard() {
     });
     
     // Navigate to OAuth page in same tab for better redirect handling
-    window.location.href = `http://localhost:3001/oauth/authorize?${params.toString()}`;
+    window.location.href = `http://localhost:3000/oauth/authorize?${params.toString()}`;
   };
 
   const revokeToken = async (tokenId: string) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:3001/api/tokens/${tokenId}`, {
+      await axios.delete(`http://localhost:3000/api/tokens/${tokenId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       loadTokens(); // Refresh the list
@@ -621,6 +788,36 @@ function Dashboard() {
         title: 'Failed to revoke token',
         message: (error as any).response?.data?.error || 'Unable to revoke token'
       });
+    }
+  };
+
+  // Preview file function
+  const handlePreviewFile = async (file: any) => {
+    if (!file.id) return;
+    
+    setPreviewLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`http://localhost:3000/api/files/${file.id}?preview=true`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      setPreviewFile(response.data.file);
+      
+      showNotification({
+        type: 'success',
+        title: 'Preview loaded',
+        message: `Preview for ${file.name} loaded successfully`
+      });
+    } catch (error) {
+      console.error('Preview failed:', error);
+      showNotification({
+        type: 'error',
+        title: 'Preview failed',
+        message: 'Unable to load file preview'
+      });
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -708,36 +905,198 @@ function Dashboard() {
         </div>
       )}
 
-      {/* File Upload Section */}
-      <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
-        <h3 style={{ marginTop: 0 }}>📤 Upload Files</h3>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input 
-            type="file"
-            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-            style={{ padding: '8px', border: '1px solid #b1b4b6', borderRadius: '4px' }}
-          />
-          <button 
-            onClick={handleFileUpload}
-            disabled={!selectedFile || uploading}
-            style={{ 
-              background: selectedFile ? '#00703c' : '#b1b4b6', 
-              color: 'white', 
-              padding: '8px 16px', 
-              border: 'none', 
-              borderRadius: '4px',
-              cursor: selectedFile && !uploading ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {uploading ? 'Uploading...' : 'Upload File'}
-          </button>
-          {selectedFile && (
-            <span style={{ fontSize: '0.9rem', color: '#505a5f' }}>
-              Selected: {selectedFile.name} ({Math.round(selectedFile.size / 1024)}KB)
-            </span>
-          )}
+      {/* Navigation and Controls Section */}
+      <div style={{ background: '#f8f8f8', padding: '20px', borderRadius: '4px', marginBottom: '20px', border: '2px solid #1d70b8' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <div>
+            <h3 style={{ margin: 0, color: '#1d70b8' }}>📁 {showTrash ? 'Trash' : currentFolder.name || 'Home'}</h3>
+            <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#505a5f' }}>
+              {showTrash ? 'Deleted files' : `Path: ${currentFolder.path || '/'}`}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {!showTrash && (
+              <>
+                <button 
+                  onClick={() => setShowNewFolderDialog(true)}
+                  style={{ 
+                    background: '#00703c', 
+                    color: 'white', 
+                    padding: '8px 12px', 
+                    border: 'none', 
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  📁 New Folder
+                </button>
+                <button 
+                  onClick={() => loadFolderContents('root')}
+                  disabled={currentFolder.id === 'root'}
+                  style={{ 
+                    background: currentFolder.id === 'root' ? '#b1b4b6' : '#1d70b8', 
+                    color: 'white', 
+                    padding: '8px 12px', 
+                    border: 'none', 
+                    borderRadius: '4px',
+                    cursor: currentFolder.id === 'root' ? 'not-allowed' : 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🏠 Home
+                </button>
+              </>
+            )}
+            <button 
+              onClick={() => {
+                setShowTrash(!showTrash);
+                if (!showTrash) {
+                  loadTrash();
+                } else {
+                  loadFolderContents(currentFolder.id);
+                }
+              }}
+              style={{ 
+                background: showTrash ? '#d4351c' : '#626a6e', 
+                color: 'white', 
+                padding: '8px 12px', 
+                border: 'none', 
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              {showTrash ? '📁 Back to Files' : '🗑️ Trash'}
+            </button>
+            {selectedFiles.length > 0 && (
+              <button 
+                onClick={() => handleDeleteFiles(selectedFiles, showTrash)}
+                style={{ 
+                  background: '#d4351c', 
+                  color: 'white', 
+                  padding: '8px 12px', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                {showTrash ? '🔥 Delete Forever' : '🗑️ Delete'} ({selectedFiles.length})
+              </button>
+            )}
+          </div>
         </div>
+
+        {!showTrash && (
+          <div style={{ background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #b1b4b6' }}>
+            <h4 style={{ marginTop: 0, marginBottom: '10px' }}>📤 Upload Files to {currentFolder.name || 'Home'}</h4>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input 
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                style={{ padding: '8px', border: '1px solid #b1b4b6', borderRadius: '4px' }}
+              />
+              <button 
+                onClick={handleFileUpload}
+                disabled={!selectedFile || uploading}
+                style={{ 
+                  background: selectedFile ? '#00703c' : '#b1b4b6', 
+                  color: 'white', 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: selectedFile && !uploading ? 'pointer' : 'not-allowed'
+                }}
+              >
+                {uploading ? 'Uploading...' : 'Upload File'}
+              </button>
+              {selectedFile && (
+                <span style={{ fontSize: '0.9rem', color: '#505a5f' }}>
+                  Selected: {selectedFile.name} ({Math.round(selectedFile.size / 1024)}KB)
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* New Folder Dialog */}
+      {showNewFolderDialog && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(0,0,0,0.5)', 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{ 
+            background: 'white', 
+            padding: '30px', 
+            borderRadius: '8px', 
+            minWidth: '400px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+          }}>
+            <h3 style={{ marginTop: 0, color: '#1d70b8' }}>Create New Folder</h3>
+            <p style={{ marginBottom: '15px', color: '#505a5f' }}>
+              Create a new folder in {currentFolder.name || 'Home'}
+            </p>
+            <input 
+              type="text"
+              placeholder="Folder name"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              style={{ 
+                width: '100%', 
+                padding: '10px', 
+                border: '1px solid #b1b4b6', 
+                borderRadius: '4px',
+                marginBottom: '20px',
+                fontSize: '16px'
+              }}
+              onKeyPress={(e) => e.key === 'Enter' && handleCreateFolder()}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => {
+                  setShowNewFolderDialog(false);
+                  setNewFolderName('');
+                }}
+                style={{ 
+                  background: '#b1b4b6', 
+                  color: 'white', 
+                  padding: '10px 20px', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleCreateFolder}
+                disabled={!newFolderName.trim()}
+                style={{ 
+                  background: newFolderName.trim() ? '#00703c' : '#b1b4b6', 
+                  color: 'white', 
+                  padding: '10px 20px', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: newFolderName.trim() ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Create Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search Section */}
       <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
@@ -770,47 +1129,654 @@ function Dashboard() {
         )}
       </div>
 
-      {/* Files Section */}
-      <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
-        <h3 style={{ marginTop: 0 }}>📁 Your Files</h3>
-        {filesLoading ? (
-          <LoadingSpinner text="Loading files..." />
-        ) : files.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#505a5f', padding: '20px' }}>
-            No files uploaded yet. Use the upload section above to add files.
-          </p>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
-            {files.map(file => (
-              <div key={file.fileId || file.id} style={{ background: 'white', padding: '15px', borderRadius: '4px', border: '1px solid #b1b4b6' }}>
-                <strong>{file.name}</strong>
-                <p style={{ margin: '5px 0', fontSize: '0.9rem', color: '#505a5f' }}>
-                  Size: {Math.round(file.size / 1024)}KB
-                </p>
-                <p style={{ margin: '5px 0', fontSize: '0.8rem', color: '#626a6e' }}>
-                  {new Date(file.createdAt).toLocaleDateString()}
-                </p>
-                <div style={{ marginTop: '10px', display: 'flex', gap: '5px' }}>
-                  <button 
-                    onClick={() => {/* TODO: Implement preview */}}
-                    style={{ 
-                      background: '#1d70b8', 
-                      color: 'white', 
-                      padding: '4px 8px', 
-                      border: 'none', 
-                      borderRadius: '2px',
-                      fontSize: '0.8rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Preview
-                  </button>
+      {/* Classic File System Tree UI */}
+      <div style={{ 
+        background: '#fff', 
+        border: '1px solid #b1b4b6', 
+        borderRadius: '4px', 
+        marginBottom: '30px',
+        minHeight: '600px',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        
+        {/* Toolbar */}
+        <div style={{ 
+          background: '#f8f9fa', 
+          borderBottom: '1px solid #b1b4b6', 
+          padding: '10px 15px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <h3 style={{ margin: 0, color: '#1d70b8' }}>
+              {showTrash ? '🗑️ Trash' : '📁 File Explorer'}
+            </h3>
+            
+            {/* Breadcrumb Navigation */}
+            {!showTrash && (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                background: 'white',
+                padding: '5px 10px',
+                borderRadius: '3px',
+                border: '1px solid #d1d5db',
+                fontSize: '0.9rem'
+              }}>
+                <span 
+                  onClick={() => loadFolderContents('root')}
+                  style={{ 
+                    cursor: 'pointer', 
+                    color: currentFolder.id === 'root' ? '#505a5f' : '#1d70b8',
+                    textDecoration: currentFolder.id === 'root' ? 'none' : 'underline'
+                  }}
+                >
+                  🏠 Home
+                </span>
+                {currentFolder.path && currentFolder.path !== '/' && (
+                  <span style={{ color: '#505a5f' }}> {currentFolder.path}</span>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Toolbar Actions */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {!showTrash && (
+              <button 
+                onClick={() => setShowNewFolderDialog(true)}
+                style={{ 
+                  background: '#00703c', 
+                  color: 'white', 
+                  padding: '6px 12px', 
+                  border: 'none', 
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                📁 New Folder
+              </button>
+            )}
+            
+            <button 
+              onClick={() => {
+                setShowTrash(!showTrash);
+                setSelectedFiles([]);
+                if (!showTrash) {
+                  loadTrash();
+                } else {
+                  loadFolderContents(currentFolder.id);
+                }
+              }}
+              style={{ 
+                background: showTrash ? '#6c757d' : '#6c757d', 
+                color: 'white', 
+                padding: '6px 12px', 
+                border: 'none', 
+                borderRadius: '3px',
+                cursor: 'pointer',
+                fontSize: '0.85rem'
+              }}
+            >
+              {showTrash ? '📁 Files' : '🗑️ Trash'}
+            </button>
+            
+            {selectedFiles.length > 0 && (
+              <button 
+                onClick={() => handleDeleteFiles(selectedFiles, showTrash)}
+                style={{ 
+                  background: '#d4351c', 
+                  color: 'white', 
+                  padding: '6px 12px', 
+                  border: 'none', 
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                {showTrash ? '🔥 Delete Forever' : '🗑️ Delete'} ({selectedFiles.length})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div style={{ display: 'flex', flex: 1 }}>
+          
+          {/* Left Sidebar - Folder Tree */}
+          {!showTrash && (
+            <div style={{ 
+              width: '250px', 
+              borderRight: '1px solid #e5e7eb',
+              background: '#f9fafb',
+              padding: '10px'
+            }}>
+              <div style={{ marginBottom: '10px' }}>
+                <strong style={{ fontSize: '0.9rem', color: '#374151' }}>Folders</strong>
+              </div>
+              
+              <div style={{ fontSize: '0.9rem' }}>
+                {/* Root Folder */}
+                <div 
+                  onClick={() => loadFolderContents('root')}
+                  style={{ 
+                    padding: '8px', 
+                    cursor: 'pointer',
+                    borderRadius: '3px',
+                    background: currentFolder.id === 'root' ? '#e5e7eb' : 'transparent',
+                    color: currentFolder.id === 'root' ? '#1d70b8' : '#374151',
+                    marginBottom: '2px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <span style={{ marginRight: '6px' }}>🏠</span>
+                  Home
+                </div>
+                
+                {/* Folder Tree */}
+                {folders.filter(f => f.parentId === 'root').map(folder => (
+                  <div key={folder.id} style={{ marginLeft: '16px' }}>
+                    <div 
+                      onClick={() => loadFolderContents(folder.id)}
+                      style={{ 
+                        padding: '6px 8px', 
+                        cursor: 'pointer',
+                        borderRadius: '3px',
+                        background: currentFolder.id === folder.id ? '#e5e7eb' : 'transparent',
+                        color: currentFolder.id === folder.id ? '#1d70b8' : '#374151',
+                        marginBottom: '2px',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <span style={{ marginRight: '6px' }}>📁</span>
+                      {folder.name}
+                      <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#9ca3af' }}>
+                        {folder.fileCount || 0}
+                      </span>
+                    </div>
+                    
+                    {/* Sub-folders */}
+                    {folders.filter(sf => sf.parentId === folder.id).map(subfolder => (
+                      <div 
+                        key={subfolder.id}
+                        onClick={() => loadFolderContents(subfolder.id)}
+                        style={{ 
+                          padding: '4px 8px', 
+                          cursor: 'pointer',
+                          borderRadius: '3px',
+                          background: currentFolder.id === subfolder.id ? '#e5e7eb' : 'transparent',
+                          color: currentFolder.id === subfolder.id ? '#1d70b8' : '#6b7280',
+                          marginBottom: '1px',
+                          marginLeft: '16px',
+                          fontSize: '0.85rem',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <span style={{ marginRight: '6px' }}>📁</span>
+                        {subfolder.name}
+                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#9ca3af' }}>
+                          {subfolder.fileCount || 0}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Right Panel - File List */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            
+            {filesLoading ? (
+              <div style={{ padding: '40px', textAlign: 'center' }}>
+                <LoadingSpinner text={showTrash ? "Loading trash..." : "Loading files..."} />
+              </div>
+            ) : (
+              <>
+                {/* File List Header */}
+                <div style={{ 
+                  background: '#f3f4f6', 
+                  borderBottom: '1px solid #e5e7eb',
+                  padding: '8px 12px',
+                  display: 'grid',
+                  gridTemplateColumns: showTrash ? '30px 1fr 100px 120px' : '30px 1fr 100px 120px 80px',
+                  gap: '12px',
+                  alignItems: 'center',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                  color: '#374151'
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={!showTrash && files.length > 0 && selectedFiles.length === files.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedFiles(files.map(f => f.id));
+                        } else {
+                          setSelectedFiles([]);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </label>
+                  <div>Name</div>
+                  <div>Size</div>
+                  <div>{showTrash ? 'Deleted' : 'Modified'}</div>
+                  {!showTrash && <div>Actions</div>}
+                </div>
+
+                {/* File List Content */}
+                <div style={{ flex: 1, overflow: 'auto', maxHeight: '400px' }}>
+                  {(showTrash ? deletedFiles : files).length === 0 ? (
+                    <div style={{ 
+                      padding: '60px 20px', 
+                      textAlign: 'center', 
+                      color: '#6b7280',
+                      fontSize: '0.95rem'
+                    }}>
+                      {showTrash ? (
+                        <div>
+                          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🗑️</div>
+                          <div>Trash is empty</div>
+                          <div style={{ fontSize: '0.85rem', marginTop: '8px' }}>
+                            Deleted files will appear here
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📁</div>
+                          <div>This folder is empty</div>
+                          <div style={{ fontSize: '0.85rem', marginTop: '8px' }}>
+                            Upload files or create folders to get started
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    (showTrash ? deletedFiles : files).map((file, index) => (
+                      <div 
+                        key={file.id}
+                        style={{ 
+                          padding: '8px 12px',
+                          borderBottom: '1px solid #f3f4f6',
+                          display: 'grid',
+                          gridTemplateColumns: showTrash ? '30px 1fr 100px 120px' : '30px 1fr 100px 120px 80px',
+                          gap: '12px',
+                          alignItems: 'center',
+                          fontSize: '0.9rem',
+                          background: selectedFiles.includes(file.id) ? '#eff6ff' : 
+                                      index % 2 === 0 ? '#ffffff' : '#f9fafb',
+                          cursor: 'pointer',
+                          borderLeft: selectedFiles.includes(file.id) ? '3px solid #1d70b8' : '3px solid transparent'
+                        }}
+                        onDoubleClick={() => !showTrash && handlePreviewFile(file)}
+                      >
+                        {/* Checkbox */}
+                        <label onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedFiles.includes(file.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedFiles([...selectedFiles, file.id]);
+                              } else {
+                                setSelectedFiles(selectedFiles.filter(id => id !== file.id));
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </label>
+                        
+                        {/* File Name with Icon */}
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <span style={{ fontSize: '16px', marginRight: '8px' }}>
+                            {file.mimetype?.startsWith('image/') ? '🖼️' :
+                             file.mimetype === 'text/plain' ? '📄' :
+                             file.mimetype === 'application/pdf' ? '📋' :
+                             '📎'}
+                          </span>
+                          <span style={{ 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            whiteSpace: 'nowrap',
+                            color: showTrash ? '#6b7280' : '#111827'
+                          }}>
+                            {file.name}
+                          </span>
+                        </div>
+                        
+                        {/* File Size */}
+                        <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                          {(file.size / 1024).toFixed(0)} KB
+                        </div>
+                        
+                        {/* Date */}
+                        <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                          {showTrash ? 
+                            new Date(file.deletedAt).toLocaleDateString() :
+                            new Date(file.createdAt).toLocaleDateString()
+                          }
+                        </div>
+                        
+                        {/* Actions */}
+                        {!showTrash && (
+                          <div style={{ display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+                            <button 
+                              onClick={() => handlePreviewFile(file)}
+                              style={{ 
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: '2px',
+                                fontSize: '14px'
+                              }}
+                              title="Preview"
+                            >
+                              👁️
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteFiles([file.id])}
+                              style={{ 
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: '2px',
+                                fontSize: '14px'
+                              }}
+                              title="Delete"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                  
+                  {/* Trash Actions Row */}
+                  {showTrash && deletedFiles.length > 0 && (
+                    <div style={{ 
+                      padding: '12px',
+                      borderTop: '1px solid #e5e7eb',
+                      background: '#f9fafb',
+                      display: 'flex',
+                      gap: '8px',
+                      justifyContent: 'center'
+                    }}>
+                      {deletedFiles.map(file => selectedFiles.includes(file.id)).some(Boolean) && (
+                        <>
+                          <button 
+                            onClick={() => {
+                              const selectedFilesToRestore = deletedFiles.filter(f => selectedFiles.includes(f.id));
+                              selectedFilesToRestore.forEach(f => handleRestoreFile(f.id));
+                            }}
+                            style={{ 
+                              background: '#00703c', 
+                              color: 'white', 
+                              padding: '6px 12px', 
+                              border: 'none', 
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem'
+                            }}
+                          >
+                            ♻️ Restore Selected
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteFiles(selectedFiles, true)}
+                            style={{ 
+                              background: '#d4351c', 
+                              color: 'white', 
+                              padding: '6px 12px', 
+                              border: 'none', 
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem'
+                            }}
+                          >
+                            🔥 Delete Forever
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Enhanced File Preview (Phase 1) */}
+      {previewFile && (
+        <div style={{ 
+          background: '#f8f8f8', 
+          padding: '25px', 
+          borderRadius: '8px', 
+          marginBottom: '30px',
+          border: '2px solid #1d70b8'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div>
+              <h3 style={{ margin: 0, color: '#1d70b8', display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: '24px', marginRight: '8px' }}>
+                  {previewFile.mimetype?.startsWith('image/') ? '🖼️' :
+                   previewFile.mimetype === 'text/plain' ? '📄' :
+                   previewFile.mimetype === 'application/pdf' ? '📋' :
+                   '📎'}
+                </span>
+                File Preview: {previewFile.name}
+              </h3>
+              <p style={{ margin: '5px 0 0 32px', fontSize: '0.9rem', color: '#505a5f' }}>
+                {previewFile.path && `Path: ${previewFile.path}`}
+              </p>
+            </div>
+            <button 
+              onClick={() => setPreviewFile(null)}
+              style={{ 
+                background: '#d4351c', 
+                color: 'white', 
+                padding: '10px 16px', 
+                border: 'none', 
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              ✕ Close Preview
+            </button>
+          </div>
+          
+          <div style={{ 
+            background: 'white', 
+            padding: '20px', 
+            borderRadius: '6px', 
+            border: '1px solid #b1b4b6',
+            marginBottom: '15px'
+          }}>
+            {/* File Metadata */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', 
+              gap: '15px', 
+              fontSize: '0.9rem', 
+              marginBottom: '20px',
+              padding: '15px',
+              background: '#f3f2f1',
+              borderRadius: '4px'
+            }}>
+              <div><strong>📁 Name:</strong> {previewFile.name}</div>
+              <div><strong>📏 Size:</strong> {(previewFile.size / 1024).toFixed(1)} KB</div>
+              <div><strong>🏷️ Type:</strong> {previewFile.mimetype || 'Unknown'}</div>
+              <div><strong>📅 Created:</strong> {new Date(previewFile.createdAt).toLocaleDateString()}</div>
+            </div>
+            
+            {/* Enhanced Content Preview */}
+            {previewFile.content && typeof previewFile.content === 'string' && (
+              <div>
+                <h4 style={{ margin: '0 0 15px 0', color: '#1d70b8', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ marginRight: '8px' }}>📄</span>
+                  Text Content Preview:
+                </h4>
+                <div style={{ 
+                  background: '#2b2b2b', 
+                  color: '#f8f8f2', 
+                  padding: '15px', 
+                  borderRadius: '6px', 
+                  fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                  fontSize: '0.9rem',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: '400px',
+                  overflow: 'auto',
+                  border: '1px solid #626a6e',
+                  lineHeight: '1.4'
+                }}>
+                  {previewFile.content}
                 </div>
               </div>
-            ))}
+            )}
+            
+            {/* Enhanced Image Preview */}
+            {previewFile.content && typeof previewFile.content === 'object' && previewFile.content.type === 'image' && (
+              <div>
+                <h4 style={{ margin: '0 0 15px 0', color: '#1d70b8', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ marginRight: '8px' }}>🖼️</span>
+                  Image Preview:
+                </h4>
+                {previewFile.content.previewUrl ? (
+                  <div style={{ textAlign: 'center' }}>
+                    <img 
+                      src={`http://localhost:3000${previewFile.content.previewUrl}`}
+                      alt={previewFile.name}
+                      style={{ 
+                        maxWidth: '100%', 
+                        maxHeight: '400px', 
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        border: '1px solid #b1b4b6'
+                      }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.nextElementSibling.style.display = 'block';
+                      }}
+                    />
+                    <div style={{ 
+                      display: 'none', 
+                      padding: '20px', 
+                      color: '#d4351c', 
+                      fontStyle: 'italic' 
+                    }}>
+                      ⚠️ Unable to load image preview
+                    </div>
+                    {previewFile.content.metadata && (
+                      <div style={{ 
+                        marginTop: '10px', 
+                        fontSize: '0.8rem', 
+                        color: '#505a5f',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '15px'
+                      }}>
+                        <span>📏 Size: {(previewFile.content.metadata.size / 1024).toFixed(1)} KB</span>
+                        <span>🏷️ Format: {previewFile.content.metadata.format}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ 
+                    padding: '40px', 
+                    textAlign: 'center', 
+                    color: '#505a5f', 
+                    fontStyle: 'italic',
+                    border: '2px dashed #b1b4b6',
+                    borderRadius: '4px'
+                  }}>
+                    🖼️ Image preview not available
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Fallback for unsupported files */}
+            {(!previewFile.content || 
+              (typeof previewFile.content === 'object' && previewFile.content.error)) && (
+              <div>
+                <h4 style={{ margin: '0 0 15px 0', color: '#626a6e', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ marginRight: '8px' }}>📎</span>
+                  Content Preview:
+                </h4>
+                <div style={{ 
+                  padding: '40px', 
+                  textAlign: 'center', 
+                  color: '#505a5f', 
+                  fontStyle: 'italic',
+                  border: '2px dashed #b1b4b6',
+                  borderRadius: '4px'
+                }}>
+                  {typeof previewFile.content === 'object' && previewFile.content.error 
+                    ? `⚠️ ${previewFile.content.error}`
+                    : '📎 Preview not available for this file type'
+                  }
+                </div>
+              </div>
+            )}
+            
+            {/* Action Buttons */}
+            <div style={{ 
+              marginTop: '20px', 
+              paddingTop: '15px', 
+              borderTop: '1px solid #b1b4b6',
+              display: 'flex',
+              gap: '10px',
+              justifyContent: 'center'
+            }}>
+              <a 
+                href={`http://localhost:3000/api/files/${previewFile.id}/raw`}
+                download={previewFile.name}
+                style={{ 
+                  background: '#00703c', 
+                  color: 'white', 
+                  padding: '8px 16px', 
+                  borderRadius: '4px',
+                  textDecoration: 'none',
+                  fontSize: '0.9rem'
+                }}
+              >
+                ⬇️ Download
+              </a>
+              {!showTrash && (
+                <button 
+                  onClick={() => {
+                    handleDeleteFiles([previewFile.id]);
+                    setPreviewFile(null);
+                  }}
+                  style={{ 
+                    background: '#d4351c', 
+                    color: 'white', 
+                    padding: '8px 16px', 
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  🗑️ Delete File
+                </button>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Token Management */}
       <div style={{ background: '#f3f2f1', padding: '20px', borderRadius: '4px', marginBottom: '30px' }}>
@@ -895,7 +1861,7 @@ function Dashboard() {
       "args": ["bitatlas-mcp-client.js"],
       "env": {
         "BITATLAS_TOKEN": "YOUR_TOKEN_HERE",
-        "BITATLAS_API_URL": "http://localhost:3001"
+        "BITATLAS_API_URL": "http://localhost:3000"
       }
     }
   }
