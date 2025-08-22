@@ -7,6 +7,8 @@ import path from 'path';
 import fs from 'fs';
 import { config } from 'dotenv';
 import { db } from './database/connection';
+import { EuPolicyService, enforceEuPolicy } from './services/euPolicyService';
+import { AuditService } from './services/auditService';
 
 // Load environment variables
 config();
@@ -39,6 +41,15 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Initialize audit service
+const auditService = new AuditService();
+
+// Audit logging middleware (before EU policy)
+app.use(auditService.auditMiddleware());
+
+// EU Policy enforcement middleware
+app.use(enforceEuPolicy());
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -1427,6 +1438,16 @@ async function connectDatabase() {
     console.log('ℹ️ Running in development mode with mock responses');
   }
 }
+
+// EU compliance endpoint
+app.get('/eu-compliance', (req, res) => {
+  const report = EuPolicyService.generateComplianceReport();
+  res.json({
+    status: 'compliant',
+    ...report,
+    approvedProviders: EuPolicyService.getApprovedProviders()
+  });
+});
 
 // Start server
 async function startServer() {

@@ -1,14 +1,30 @@
-# BitAtlas
+# BitAtlas ☁️🔐
 
-BitAtlas is a comprehensive MCP (Model Context Protocol) enabled development platform that provides a unified interface for file operations, search functionality, and real-time collaboration features.
+> **EU-Only Cloud Storage with AI Assistant Integration**  
+> Your files stay in Europe. Guaranteed.
 
-## Architecture
+## The Problem
+Existing cloud storage providers like Dropbox, Google Drive, and OneDrive route your sensitive data through US servers, violating GDPR and compromising European data sovereignty.
 
-This is a monorepo containing three main modules:
+## The Solution  
+BitAtlas is a **EU-only cloud storage platform** that:
+- 🇪🇺 **Guarantees EU data residency** - Files never leave European borders
+- 🤖 **AI Assistant Integration** - MCP protocol enables Claude/ChatGPT to access your files securely  
+- 🏗️ **Multi-Provider Backend** - Scaleway, OVH, Hetzner object storage adapters
+- 🔐 **Client-Side Encryption** - Your data is encrypted before it leaves your device
 
-- **frontend**: React/TypeScript web application
-- **backend**: Node.js/Express/TypeScript API server  
-- **mcp-modules**: Shared MCP protocol types, interfaces, and schemas
+## Architecture Overview
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   React UI      │────│  Express API     │────│  EU Providers   │
+│  (Frontend)     │    │  (Backend)       │    │  (Scaleway/OVH) │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                              │
+                       ┌──────────────────┐
+                       │   MCP Gateway    │
+                       │  (AI Assistant)  │
+                       └──────────────────┘
+```
 
 ## Project Structure
 
@@ -65,26 +81,36 @@ The MCP modules provide standardized interfaces and schemas for:
 - Structured error responses
 - Retry logic for transient failures
 
-## Quick Start
+## 🚀 Run Locally in 2 Minutes
 
 ### Prerequisites
-- Node.js >= 18.0.0
-- npm >= 9.0.0
+- **Docker** (with Docker Compose)
+- **Node.js** 18+
 
-### Installation
-
+### One-Command Start
 ```bash
-# Clone the repository
+# Navigate to project
 cd BitAtlas
 
-# Install all dependencies
-npm run install:all
+# Install dependencies  
+cd backend && npm install && cd ../frontend && npm install && cd ..
 
-# Build shared modules
-npm run build
+# Start full stack
+docker-compose -f docker-compose.local.yml up -d
+```
 
-# Start development servers
-npm run dev
+### Access Points
+- **Frontend:** http://localhost:5173 (File management UI)
+- **Backend API:** http://localhost:3000 (REST + MCP endpoints)
+- **OAuth Flow:** http://localhost:3000/oauth/authorize (AI assistant access)
+
+### Development Mode (Hot Reload)
+```bash
+# Backend (in-memory storage)
+cd backend && npm run dev:simple
+
+# Frontend (new terminal)
+cd frontend && npm run dev
 ```
 
 ### Individual Module Commands
@@ -123,6 +149,24 @@ npm run test --workspace=mcp-modules
 - Zod for runtime validation
 - Follow existing patterns and conventions
 
+## 🔐 EU Data Sovereignty Features
+
+### Current Implementation
+- ✅ **In-Memory Demo** - Fast local development
+- ✅ **File Management** - Upload, organize, preview files  
+- ✅ **OAuth Integration** - AI assistant access with MCP protocol
+- ✅ **Classic File UI** - Professional Windows/macOS style interface
+
+### Production Roadmap  
+- 🚧 **EU Provider Integration** - Scaleway, OVH, Hetzner adapters
+- 🚧 **Client-Side Encryption** - E2EE before upload
+- 🚧 **Policy Enforcement** - Automated EU-only guarantees
+- 🚧 **Audit Logging** - Compliance and monitoring
+
+## Contributing
+
+This project prioritizes **EU data sovereignty** and **privacy by design**. All contributions must maintain these core principles.
+
 ## License
 
-[License details to be added]
+MIT - European Data Sovereignty Focused

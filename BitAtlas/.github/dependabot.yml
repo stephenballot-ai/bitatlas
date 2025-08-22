@@ -1,0 +1,76 @@
+version: 2
+updates:
+  # Backend dependencies
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "stephenballot-ai"
+    assignees:
+      - "stephenballot-ai"
+    commit-message:
+      prefix: "chore(backend)"
+      include: "scope"
+
+  # Frontend dependencies  
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "stephenballot-ai"
+    assignees:
+      - "stephenballot-ai"
+    commit-message:
+      prefix: "chore(frontend)"
+      include: "scope"
+
+  # MCP modules dependencies
+  - package-ecosystem: "npm"
+    directory: "/mcp-modules"
+    schedule:
+      interval: "weekly"  
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "stephenballot-ai"
+    assignees:
+      - "stephenballot-ai"
+    commit-message:
+      prefix: "chore(mcp)"
+      include: "scope"
+
+  # Root package.json dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "stephenballot-ai"
+    assignees:
+      - "stephenballot-ai"
+    commit-message:
+      prefix: "chore(root)"
+      include: "scope"
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "stephenballot-ai"
+    assignees:
+      - "stephenballot-ai"
+    commit-message:
+      prefix: "chore(actions)"
+      include: "scope"
