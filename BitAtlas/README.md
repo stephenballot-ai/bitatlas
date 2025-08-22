@@ -1,30 +1,33 @@
 # BitAtlas ☁️🔐
 
-> **EU-Only Cloud Storage with AI Assistant Integration**  
-> Your files stay in Europe. Guaranteed.
+> **Global Customers, EEA-Resident Data**  
+> Welcome users from anywhere - data stays in Europe. Guaranteed.
 
 ## The Problem
-Existing cloud storage providers like Dropbox, Google Drive, and OneDrive route your sensitive data through US servers, violating GDPR and compromising European data sovereignty.
+Existing cloud storage providers route your sensitive data through non-European servers, violating GDPR and compromising data sovereignty for European businesses and privacy-conscious users worldwide.
 
 ## The Solution  
-BitAtlas is a **EU-only cloud storage platform** that:
-- 🇪🇺 **Guarantees EU data residency** - Files never leave European borders
+BitAtlas is a **global cloud storage platform with EEA data residency guarantee** that:
+- 🌍 **Global Access** - Welcome customers from anywhere in the world
+- 🇪🇺 **EEA Data Residency** - All customer content and metadata stored only within EEA regions
 - 🤖 **AI Assistant Integration** - MCP protocol enables Claude/ChatGPT to access your files securely  
-- 🏗️ **Multi-Provider Backend** - Scaleway, OVH, Hetzner object storage adapters
-- 🔐 **Client-Side Encryption** - Your data is encrypted before it leaves your device
+- 🏗️ **European-Only Providers** - Scaleway, OVH, Hetzner, Exoscale, IONOS (European companies only)
+- 🔐 **E2EE by Default** - Client-side encryption ensures even cross-border transit is unreadable
 
 ## Architecture Overview
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   React UI      │────│  Express API     │────│  EU Providers   │
-│  (Frontend)     │    │  (Backend)       │    │  (Scaleway/OVH) │
+│   React UI      │────│  Control Plane   │────│  EEA Data Plane │
+│ (Global Access) │    │ (Global/Stateless)│    │ (EEA Regions)   │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │
-                       ┌──────────────────┐
-                       │   MCP Gateway    │
-                       │  (AI Assistant)  │
-                       └──────────────────┘
+                              │                          │
+                       ┌──────────────────┐    ┌─────────────────┐
+                       │   MCP Gateway    │    │ Scaleway/OVH/   │
+                       │  (AI Assistant)  │    │ Hetzner/Exoscale│
+                       └──────────────────┘    └─────────────────┘
 ```
+
+**Philosophy**: Global customers welcome - data stays in EEA
 
 ## Project Structure
 
@@ -149,24 +152,34 @@ npm run test --workspace=mcp-modules
 - Zod for runtime validation
 - Follow existing patterns and conventions
 
-## 🔐 EU Data Sovereignty Features
+## 🔐 EEA Data Residency Features
 
 ### Current Implementation
 - ✅ **In-Memory Demo** - Fast local development
 - ✅ **File Management** - Upload, organize, preview files  
 - ✅ **OAuth Integration** - AI assistant access with MCP protocol
 - ✅ **Classic File UI** - Professional Windows/macOS style interface
+- ✅ **Data Residency Policy** - Automated EEA-only enforcement
+- ✅ **Multi-Provider Support** - Scaleway, OVH, Hetzner, Exoscale, IONOS
 
 ### Production Roadmap  
-- 🚧 **EU Provider Integration** - Scaleway, OVH, Hetzner adapters
-- 🚧 **Client-Side Encryption** - E2EE before upload
-- 🚧 **Policy Enforcement** - Automated EU-only guarantees
-- 🚧 **Audit Logging** - Compliance and monitoring
+- 🚧 **Runtime Bucket Verification** - Real-time location validation
+- 🚧 **E2EE by Default** - Client-side encryption before upload
+- 🚧 **EEA-Only CDN** - Performance without data leakage
+- 🚧 **Enhanced Audit Logging** - Comprehensive compliance monitoring
+
+### **Residency Guarantee (v0.1)**
+> - **P0 Content** (files/blobs) and **P1 Metadata** (keys, identifiers, access logs) **persist only in EEA regions**
+> - **European Companies Only** - No American tech giants (AWS, Google, Microsoft), even in EU regions
+> - **Backups/replicas** remain in the EEA with European providers
+> - **In-transit** bytes may cross borders but are end-to-end encrypted
+> - **Caching/CDNs** outside the EEA are disabled by default
+> - **Aggregated, anonymized telemetry** (P2) may be processed outside EEA only if impossible to re-identify users
 
 ## Contributing
 
-This project prioritizes **EU data sovereignty** and **privacy by design**. All contributions must maintain these core principles.
+This project prioritizes **EEA data residency** and **privacy by design** while welcoming global users. All contributions must maintain these core principles.
 
 ## License
 
-MIT - European Data Sovereignty Focused
+MIT - Global Access, European Data Residency

@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { config } from 'dotenv';
 import { db } from './database/connection';
-import { EuPolicyService, enforceEuPolicy } from './services/euPolicyService';
+import { DataResidencyService, enforceDataResidency, EuPolicyService } from './services/euPolicyService';
 import { AuditService } from './services/auditService';
 
 // Load environment variables
@@ -48,8 +48,8 @@ const auditService = new AuditService();
 // Audit logging middleware (before EU policy)
 app.use(auditService.auditMiddleware());
 
-// EU Policy enforcement middleware
-app.use(enforceEuPolicy());
+// EEA data residency policy enforcement middleware
+app.use(enforceDataResidency());
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -1439,14 +1439,19 @@ async function connectDatabase() {
   }
 }
 
-// EU compliance endpoint
-app.get('/eu-compliance', (req, res) => {
+// EEA data residency compliance endpoint
+app.get('/data-residency', (req, res) => {
   const report = EuPolicyService.generateComplianceReport();
   res.json({
     status: 'compliant',
     ...report,
     approvedProviders: EuPolicyService.getApprovedProviders()
   });
+});
+
+// Legacy endpoint for backward compatibility
+app.get('/eu-compliance', (req, res) => {
+  res.redirect(301, '/data-residency');
 });
 
 // Start server
