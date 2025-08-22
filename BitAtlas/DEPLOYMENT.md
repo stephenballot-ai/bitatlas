@@ -232,8 +232,33 @@ BitAtlas exports metrics in the following formats:
 
 - **Health endpoint**: `/health` - Service health status
 - **Data Residency endpoint**: `/data-residency` - EEA compliance status
+- **MCP Health endpoint**: `/api/v1/mcp/health` - MCP service status (requires auth)
 - **Metrics endpoint**: `/metrics` - Application metrics
 - **OpenTelemetry**: Configure `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+### MCP Service Monitoring
+
+```bash
+# Production MCP integration test
+node scripts/test-production-mcp.js
+
+# Continuous monitoring (add to cron)
+*/15 * * * * cd /app && MCP_TEST_TOKEN=$TOKEN node scripts/test-production-mcp.js
+
+# OAuth token generation test
+curl -X POST https://your-domain.com/oauth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "test-code",
+    "client_id": "your-client-id",
+    "redirect_uri": "https://your-callback.com"
+  }'
+
+# MCP tools discovery with token
+curl -H "Authorization: Bearer $TOKEN" \
+  https://your-domain.com/api/v1/mcp/tools | jq '.tools[].name'
+```
 
 ## Security Considerations
 
